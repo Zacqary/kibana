@@ -13,6 +13,8 @@ import { DocumentTitle } from '../../components/document_title';
 import { Header } from '../../components/header';
 import { HelpCenterContent } from '../../components/help_center_content';
 import { SourceConfigurationFlyout } from '../../components/source_configuration';
+import { RoutedTabs } from '../../components/navigation/routed_tabs';
+import { EuiTab, EuiTabs } from '@elastic/eui';
 
 interface LogsPageHeaderProps {
   intl: InjectedIntl;
@@ -21,7 +23,7 @@ interface LogsPageHeaderProps {
 
 export const LogsPageHeader = injectUICapabilities(
   injectI18n((props: LogsPageHeaderProps) => {
-    const { intl, uiCapabilities } = props;
+    const { match, intl, uiCapabilities } = props;
     return (
       <>
         <Header
@@ -51,6 +53,20 @@ export const LogsPageHeader = injectUICapabilities(
         <SourceConfigurationFlyout
           shouldAllowEdit={uiCapabilities.logs.configureSource as boolean}
         />
+        <EuiTabs>
+          <EuiTab isSelected>
+            {intl.formatMessage({
+              id: 'xpack.infra.logsPage.logsStreamTabTitle',
+              defaultMessage: 'Stream',
+            })}
+          </EuiTab>
+          <EuiTab>
+            {intl.formatMessage({
+              id: 'xpack.infra.logsPage.logsSettingsTabTitle',
+              defaultMessage: 'Settings',
+            })}
+          </EuiTab>
+        </EuiTabs>
       </>
     );
   })
