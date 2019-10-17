@@ -86,6 +86,8 @@ export const SourceConfigurationSettings = ({
     return null;
   }
 
+  const isIE11 = 'MSInputMethodContext' in window && 'documentMode' in document;
+
   return (
     <>
       <EuiPage>
