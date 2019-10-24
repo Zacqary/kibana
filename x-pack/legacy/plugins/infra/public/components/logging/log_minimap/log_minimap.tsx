@@ -33,20 +33,38 @@ interface LogMinimapProps {
   intervalSize: number;
   summaryBuckets: SummaryBucket[];
   summaryHighlightBuckets?: SummaryHighlightBucket[];
-  target: number | null;
+  visibleMidpointTime: number | null;
   width: number;
 }
 
 interface LogMinimapState {
-  target: number | null;
+  mapMidpoint: number | null;
   drag: DragRecord | null;
   svgPosition: ClientRect;
   timeCursorY: number;
+  intervalSize: number;
 }
 
-function calculateYScale(target: number | null, height: number, intervalSize: number) {
-  const domainStart = target ? target - intervalSize / 2 : 0;
-  const domainEnd = target ? target + intervalSize / 2 : 0;
+function calculateYScale(
+  midpoint: number | null,
+  minMaxPoint: number | null,
+  height: number,
+  intervalSize: number,
+  overscanMultiplier?: number
+) {
+  const displayedTimeStart = midpoint
+    ? Math.min(midpoint - intervalSize / 2, (minMaxPoint || Infinity) - intervalSize * 0.05)
+    : 0;
+  const displayedTimeEnd = midpoint
+    ? Math.max(midpoint + intervalSize / 2, (minMaxPoint || -Infinity) + intervalSize * 0.05)
+    : 0;
+
+  const overscanOffset = overscanMultiplier
+    ? (intervalSize * overscanMultiplier) / 2 - intervalSize / 2
+    : 0;
+
+  const domainStart = displayedTimeStart - overscanOffset;
+  const domainEnd = displayedTimeEnd + overscanOffset;
   return scaleLinear()
     .domain([domainStart, domainEnd])
     .range([0, height]);
@@ -57,7 +75,7 @@ export class LogMinimap extends React.Component<LogMinimapProps, LogMinimapState
     super(props);
     this.state = {
       timeCursorY: 0,
-      target: props.target,
+      mapMidpoint: props.visibleMidpointTime,
       drag: null,
       svgPosition: {
         width: 0,
@@ -67,14 +85,18 @@ export class LogMinimap extends React.Component<LogMinimapProps, LogMinimapState
         bottom: 0,
         left: 0,
       },
+      intervalSize: props.intervalSize,
     };
   }
 
   private dragTargetArea: SVGElement | null = null;
 
-  public static getDerivedStateFromProps({ target }: LogMinimapProps, { drag }: LogMinimapState) {
-    if (!drag) {
-      return { target };
+  public static getDerivedStateFromProps(
+    { visibleMidpointTime, intervalSize }: LogMinimapProps,
+    { mapMidpoint, intervalSize: intervalSizeState }: LogMinimapState
+  ) {
+    if (!mapMidpoint || intervalSize !== intervalSizeState) {
+      return { mapMidpoint: visibleMidpointTime };
     }
     return null;
   }
@@ -112,7 +134,7 @@ export class LogMinimap extends React.Component<LogMinimapProps, LogMinimapState
   private handleMouseUp = (event: MouseEvent) => {
     window.removeEventListener('mousemove', this.handleDragMove);
     window.removeEventListener('mouseup', this.handleMouseUp);
-
+    const { visibleMidpointTime } = this.props;
     const { drag, svgPosition } = this.state;
     if (!drag || !drag.currentY) {
       this.handleClick(event);
@@ -124,8 +146,8 @@ export class LogMinimap extends React.Component<LogMinimapProps, LogMinimapState
     const startTime = getTime(startYPosition);
     const endTime = getTime(endYPosition);
     const timeDifference = endTime - startTime;
-    const newTime = (this.props.target || 0) - timeDifference;
-    this.setState({ drag: null, target: newTime });
+    const newTime = (visibleMidpointTime || 0) - timeDifference;
+    this.setState({ drag: null, mapMidpoint: newTime });
     this.props.jumpToTarget({
       tiebreaker: 0,
       time: newTime,
@@ -144,9 +166,9 @@ export class LogMinimap extends React.Component<LogMinimapProps, LogMinimapState
   };
 
   public getYScale = () => {
-    const { target } = this.state;
-    const { height, intervalSize } = this.props;
-    return calculateYScale(target, height, intervalSize);
+    const { mapMidpoint } = this.state;
+    const { height, intervalSize, visibleMidpointTime } = this.props;
+    return calculateYScale(mapMidpoint, visibleMidpointTime, height, intervalSize);
   };
 
   public getPositionOfTime = (time: number) => {
@@ -174,15 +196,18 @@ export class LogMinimap extends React.Component<LogMinimapProps, LogMinimapState
       summaryHighlightBuckets,
       width,
       intervalSize,
+      visibleMidpointTime,
     } = this.props;
-    const { timeCursorY, drag, target } = this.state;
+    const { timeCursorY, drag, mapMidpoint } = this.state;
     // Render the time ruler and density map beyond the visible range of time, so that
     // the user doesn't run out of ruler when they click and drag
-    const overscanHeight = Math.round(window.screen.availHeight * 2.5) || height * 3;
+    const overscanHeight = height; //Math.round(window.screen.availHeight * 2.5) || height * 3;
     const [minTime, maxTime] = calculateYScale(
-      target,
+      mapMidpoint,
+      visibleMidpointTime,
       overscanHeight,
-      intervalSize * (overscanHeight / height)
+      intervalSize
+      // overscanHeight / height
     ).domain();
     const tickCount = height ? Math.round((overscanHeight / height) * 144) : 12;
     const overscanTranslate = height ? -(overscanHeight - height) / 2 : 0;
@@ -222,7 +247,7 @@ export class LogMinimap extends React.Component<LogMinimapProps, LogMinimapState
             getPositionOfTime={this.getPositionOfTime}
             start={highlightedInterval.start}
             width={width}
-            target={target}
+            target={visibleMidpointTime}
           />
         ) : null}
         <g transform={`translate(${width * 0.5}, 0)`}>

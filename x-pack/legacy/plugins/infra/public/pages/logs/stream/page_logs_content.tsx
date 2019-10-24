@@ -154,7 +154,7 @@ export const LogsPageLogsContent: React.FunctionComponent = () => {
                                   ? logSummaryHighlights[0].buckets
                                   : []
                               }
-                              target={visibleMidpointTime}
+                              visibleMidpointTime={visibleMidpointTime}
                             />
                           )}
                         </WithStreamItems>
