@@ -4,7 +4,6 @@
  * you may not use this file except in compliance with the Elastic License.
  */
 import React from 'react';
-
 import { euiStyled } from '../../../../../../../observability/public';
 import { nodesToWaffleMap } from '../../lib/nodes_to_wafflemap';
 import { isWaffleMapGroupWithGroups, isWaffleMapGroupWithNodes } from '../../lib/type_guards';
@@ -16,6 +15,7 @@ import { applyWaffleMapLayout } from '../../lib/apply_wafflemap_layout';
 import { SnapshotNode } from '../../../../../../common/http_api/snapshot_api';
 import { InventoryItemType } from '../../../../../../common/inventory_models/types';
 import { sortNodes } from '../../lib/sort_nodes';
+import { ReglWaffleMap } from './regl_map';
 
 interface Props {
   nodes: SnapshotNode[];
@@ -53,7 +53,14 @@ export const Map: React.FC<Props> = ({
             data-test-subj="waffleMap"
           >
             <WaffleMapInnerContainer>
-              {groupsWithLayout.map((group) => {
+              <ReglWaffleMap
+                groupsWithLayout={groupsWithLayout}
+                options={options}
+                bounds={bounds}
+                width={width}
+                height={height}
+              />
+              {/* {groupsWithLayout.map((group) => {
                 if (isWaffleMapGroupWithGroups(group)) {
                   return (
                     <GroupOfGroups
@@ -83,7 +90,7 @@ export const Map: React.FC<Props> = ({
                     />
                   );
                 }
-              })}
+              })} */}
             </WaffleMapInnerContainer>
           </WaffleMapOuterContainer>
         );

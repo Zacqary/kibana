@@ -63,7 +63,7 @@ export const NodesOverview = ({
   );
 
   const noData = !loading && nodes && nodes.length === 0;
-  if (loading) {
+  if (loading && (!nodes || nodes.length === 0)) {
     return (
       <InfraLoadingPanel
         height="100%"
