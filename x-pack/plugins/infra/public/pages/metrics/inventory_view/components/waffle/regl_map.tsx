@@ -4,11 +4,12 @@
  * you may not use this file except in compliance with the Elastic License.
  */
 
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { mapValues, memoize, zip, first, debounce, isEqual } from 'lodash';
 import REGL, { Regl } from 'regl';
 import { useUiSetting } from '../../../../../../../../../src/plugins/kibana_react/public';
 import { colorFromValue } from '../../lib/color_from_value';
+import { createMetricThresholdAlertType } from 'x-pack/plugins/infra/public/alerting/metric_threshold';
 
 type DynamicValue = (context: REGL.DefaultContext, props: { [name: string]: any }) => any;
 
@@ -30,7 +31,7 @@ const initializeREGLWithProcedures = (
 };
 
 interface Props {
-  map: { points: Record<string, Point>; groups: Record<string, Group> };
+  map: { points: Record<string, Point>; groups: Record<string, Group>; height: number };
 }
 
 const ReglCanvas = ({ map, width, height }: Props) => {
@@ -40,7 +41,7 @@ const ReglCanvas = ({ map, width, height }: Props) => {
     procedures: Record<string, REGL.DrawCommand>;
   } | null>(null);
   const [hasInitialized, setHasInititialized] = useState(false);
-  const [prevMap, setPrevMap] = useState({ points: {}, groups: {} });
+  const [prevMap, setPrevMap] = useState({ points: {}, groups: {}, height: 0 });
   const [transition, setTransition] = useState<{
     animationQueue: Frame[];
     hasStarted: boolean;
@@ -52,6 +53,7 @@ const ReglCanvas = ({ map, width, height }: Props) => {
     startTick: 0,
     startNow: 0,
   });
+  const [cameraPos, setCameraPos] = useState([0, 0, 1]);
   const { regl, procedures } = glInstance ?? {};
   const isDarkMode = useUiSetting<boolean>('theme:darkMode');
 
@@ -80,6 +82,7 @@ const ReglCanvas = ({ map, width, height }: Props) => {
           hasStarted: false,
           animationQueue: generateTransition(prevMap, map),
         });
+        setCameraPos([0, 0, 1]);
       }
     }, 100),
     [map, prevMap, transition]
@@ -100,7 +103,6 @@ const ReglCanvas = ({ map, width, height }: Props) => {
           return;
         }
         const currentTick = tick - startTick;
-        if (currentTick > animationQueue.length) return;
 
         // In ideal conditions, tick is a more reliable way to generate a smooth 60fps animation, but
         // when performance drops, fall back to performance.now() so that the animation completes in the
@@ -115,9 +117,10 @@ const ReglCanvas = ({ map, width, height }: Props) => {
         if (animationQueue[currentFrame]) {
           procedures.drawPoints({
             points: animationQueue[currentFrame].points,
+            cameraPos,
           });
           for (const group of animationQueue[currentFrame].groups) {
-            procedures.drawRectangle(group);
+            procedures.drawRectangle({ group, cameraPos });
           }
         }
       });
@@ -125,9 +128,29 @@ const ReglCanvas = ({ map, width, height }: Props) => {
         loop.cancel();
       };
     }
-  }, [regl, hasInitialized, transition, procedures]);
+  }, [regl, hasInitialized, transition, procedures, cameraPos]);
 
-  return <canvas width={width} height={height} ref={canvasEl} />;
+  const onScroll = useCallback(
+    (e) => {
+      const zooming = e.ctrlKey || e.metaKey;
+      if (zooming) e.preventDefault();
+      const { deltaY, deltaMode } = e;
+      const [cameraX, cameraY, cameraZ] = cameraPos;
+      const delta = deltaY * Math.max(1, 8 * deltaMode);
+      if (zooming) {
+        const newCameraZ = Math.min(5, Math.max(0.2, cameraZ - delta / 100));
+        setCameraPos([cameraX, cameraY, newCameraZ]);
+        return;
+      }
+      const mapBounds = (map?.height ?? 0) - height;
+      if (mapBounds <= 0) return;
+      const newCameraY = Math.max(Math.min(cameraY - delta, 0), -mapBounds);
+      setCameraPos([cameraX, newCameraY, cameraZ]);
+    },
+    [cameraPos, map]
+  );
+
+  return <canvas width={width} height={height} ref={canvasEl} onWheel={onScroll} />;
 };
 
 export const ReglWaffleMap = ({ groupsWithLayout, options, bounds, width, height }) => {
@@ -244,7 +267,7 @@ const nodesToPointRecord = memoize((layoutNodes, options, bounds, xOrigin, yOrig
   return { points, group: { x: xOrigin, y: yOrigin, width, height } };
 });
 
-const groupsToMap = memoize((groupsWithLayout, options, bounds, stageWidth, stageHeight) => {
+const groupsToMap = memoize((groupsWithLayout, options, bounds, stageWidth) => {
   const groups = {};
   const points = {};
   const X_PADDING = 24;
@@ -284,7 +307,8 @@ const groupsToMap = memoize((groupsWithLayout, options, bounds, stageWidth, stag
       });
     }
   });
-  return { points, groups };
+  const mapHeight = yOrigin + rowHeight;
+  return { points, groups, height: mapHeight };
 });
 
 const standardTween = (
@@ -334,9 +358,22 @@ const generatePointTransition = (prevPoints = {}, nextPoints = {}) => {
     size: 0.001,
   }));
 
-  const movingTween = standardTween(movingStartFrame, movingEndFrame, 24, 48);
-  const enteringTween = standardTween(enteringStartFrame, enteringEndFrame, 24, 48);
-  const exitingTween = standardTween(exitingStartFrame, exitingEndFrame, 24, 48);
+  const targetDuration = 24;
+  const maxDuration = 48;
+
+  const movingTween = standardTween(movingStartFrame, movingEndFrame, targetDuration, maxDuration);
+  const enteringTween = standardTween(
+    enteringStartFrame,
+    enteringEndFrame,
+    targetDuration,
+    maxDuration
+  );
+  const exitingTween = standardTween(
+    exitingStartFrame,
+    exitingEndFrame,
+    targetDuration,
+    maxDuration
+  );
 
   if (enteringTween.length < Math.max(exitingTween.length, movingTween.length)) {
     const extraFramesNeeded =
@@ -395,9 +432,11 @@ const generateGroupTransition = (prevGroups = {}, nextGroups = {}) => {
     width: 0,
   }));
 
-  const movingTween = tweenGroups(movingStartFrame, movingEndFrame, 90);
-  const enteringTween = tweenGroups(enteringStartFrame, enteringEndFrame, 90);
-  const exitingTween = tweenGroups(exitingStartFrame, exitingEndFrame, 90);
+  const duration = 90;
+
+  const movingTween = tweenGroups(movingStartFrame, movingEndFrame, duration);
+  const enteringTween = tweenGroups(enteringStartFrame, enteringEndFrame, duration);
+  const exitingTween = tweenGroups(exitingStartFrame, exitingEndFrame, duration);
 
   // if (enteringTween.length < Math.max(exitingTween.length, movingTween.length)) {
   //   const extraFramesNeeded =
@@ -451,12 +490,12 @@ const tweenGroups = (startFrame, endFrame, duration) => {
   return [startFrame, ...tween, endFrame];
 };
 
-const generateTransition = (prevMap, nextMap) => {
+const generateTransition = (prevMap, nextMap, animated = true) => {
   const { groups: prevGroups, points: prevPoints } = prevMap;
   const { groups: nextGroups, points: nextPoints } = nextMap;
 
-  const pointTransition = generatePointTransition(prevPoints, nextPoints);
-  const groupTransition = generateGroupTransition(prevGroups, nextGroups);
+  const pointTransition = generatePointTransition(prevPoints, nextPoints, animated);
+  const groupTransition = generateGroupTransition(prevGroups, nextGroups, animated);
 
   return pointTransition.map(
     (frame, i) =>
@@ -488,13 +527,14 @@ const drawPoints: KbnGLDrawConfig = {
   precision mediump float;
   attribute vec2 position;
   attribute float pointWidth;
+  attribute vec3 cameraPos;
   attribute lowp vec4 color;
 
   varying lowp vec4 v_pointColor;
   
   void main () {
-    gl_PointSize = pointWidth;
-    gl_Position = vec4(normalizeCoords(position), 0, 1);
+    gl_PointSize = pointWidth * pow(cameraPos.z, -1.);
+    gl_Position = vec4(normalizeCoords(position + cameraPos.xy), 0, cameraPos.z);
     v_pointColor = color;
   }`,
 
@@ -511,6 +551,7 @@ const drawPoints: KbnGLDrawConfig = {
     position: (context, props) => props.points.map((point: Point) => [point.x, point.y]),
     pointWidth: (context, props) => props.points.map((point: Point) => point.size),
     color: (context, props) => props.points.map((point: Point) => point.color),
+    cameraPos: (context, props) => props.points.map(() => props.cameraPos),
   },
   uniforms: {
     stageWidth: (context) => context.drawingBufferWidth,
@@ -525,10 +566,11 @@ const drawRectangle: (isDarkMode: boolean) => KbnGLDrawConfig = (isDarkMode: boo
   vert: vertWithNormalizeCoords`
   precision mediump float;
   attribute vec2 vertex;
+  attribute vec3 cameraPos;
   attribute lowp vec4 color;
 
   void main () {
-    gl_Position = vec4(normalizeCoords(vertex), 0, 1);
+    gl_Position = vec4(normalizeCoords(vertex + cameraPos.xy), 0, cameraPos.z);
   }  
   `,
   frag: `
@@ -542,7 +584,7 @@ const drawRectangle: (isDarkMode: boolean) => KbnGLDrawConfig = (isDarkMode: boo
 
   attributes: {
     vertex: (context, props) => {
-      const { x, y, width, height } = props;
+      const { x, y, width, height } = props.group;
       return [
         [x, y],
         [x, y + height],
@@ -552,6 +594,7 @@ const drawRectangle: (isDarkMode: boolean) => KbnGLDrawConfig = (isDarkMode: boo
         [x, y],
       ];
     },
+    cameraPos: (context, props) => Array.from(Array(6), () => props.cameraPos),
   },
   uniforms: {
     color: isDarkMode ? [0, 0, 0, 0.3] : [0, 0, 0, 0.05],
