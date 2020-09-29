@@ -5,7 +5,15 @@
  */
 
 import { SavedObjectMigrationFn } from 'kibana/server';
-import { Agent, AgentEvent, AgentPolicy, PackagePolicy, EnrollmentAPIKey } from '../../types';
+import {
+  Agent,
+  AgentEvent,
+  AgentPolicy,
+  PackagePolicy,
+  EnrollmentAPIKey,
+  Settings,
+  AgentAction,
+} from '../../types';
 
 export const migrateAgentToV7100: SavedObjectMigrationFn<
   Exclude<Agent, 'policy_id' | 'policy_revision'> & {
@@ -71,4 +79,32 @@ export const migratePackagePolicyToV7100: SavedObjectMigrationFn<
   delete packagePolicyDoc.attributes.config_id;
 
   return packagePolicyDoc;
+};
+
+export const migrateSettingsToV7100: SavedObjectMigrationFn<
+  Exclude<Settings, 'kibana_urls'> & {
+    kibana_url: string;
+  },
+  Settings
+> = (settingsDoc) => {
+  settingsDoc.attributes.kibana_urls = [settingsDoc.attributes.kibana_url];
+  // @ts-expect-error
+  delete settingsDoc.attributes.kibana_url;
+
+  return settingsDoc;
+};
+
+export const migrateAgentActionToV7100: SavedObjectMigrationFn<AgentAction, AgentAction> = (
+  agentActionDoc
+) => {
+  // @ts-expect-error
+  if (agentActionDoc.attributes.type === 'CONFIG_CHANGE') {
+    agentActionDoc.attributes.type = 'POLICY_CHANGE';
+    if (agentActionDoc.attributes.data?.config) {
+      agentActionDoc.attributes.data.policy = agentActionDoc.attributes.data.config;
+      delete agentActionDoc.attributes.data.config;
+    }
+  }
+
+  return agentActionDoc;
 };

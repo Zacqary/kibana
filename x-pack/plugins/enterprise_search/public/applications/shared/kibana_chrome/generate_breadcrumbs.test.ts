@@ -4,11 +4,13 @@
  * you may not use this file except in compliance with the Elastic License.
  */
 
-import '../../__mocks__/shallow_usecontext.mock';
-import '../../__mocks__/react_router_history.mock';
-import { mockKibanaContext, mockHistory } from '../../__mocks__';
+import '../../__mocks__/kea.mock';
+import { mockKibanaValues, mockHistory } from '../../__mocks__';
 
-jest.mock('../react_router_helpers', () => ({ letBrowserHandleEvent: jest.fn(() => false) }));
+jest.mock('../react_router_helpers', () => ({
+  letBrowserHandleEvent: jest.fn(() => false),
+  createHref: jest.requireActual('../react_router_helpers').createHref,
+}));
 import { letBrowserHandleEvent } from '../react_router_helpers';
 
 import {
@@ -37,25 +39,37 @@ describe('useBreadcrumbs', () => {
     expect(breadcrumb).toEqual([
       {
         text: 'Hello',
-        href: '/enterprise_search/hello',
+        href: '/app/enterprise_search/hello',
         onClick: expect.any(Function),
       },
       {
         text: 'World',
-        href: '/enterprise_search/world',
+        href: '/app/enterprise_search/world',
         onClick: expect.any(Function),
       },
     ]);
   });
 
   it('prevents default navigation and uses React Router history on click', () => {
-    const breadcrumb = useBreadcrumbs([{ text: '', path: '/' }])[0] as any;
+    const breadcrumb = useBreadcrumbs([{ text: '', path: '/test' }])[0] as any;
+
+    expect(breadcrumb.href).toEqual('/app/enterprise_search/test');
+    expect(mockHistory.createHref).toHaveBeenCalled();
+
     const event = { preventDefault: jest.fn() };
     breadcrumb.onClick(event);
 
-    expect(mockKibanaContext.navigateToUrl).toHaveBeenCalled();
-    expect(mockHistory.createHref).toHaveBeenCalled();
     expect(event.preventDefault).toHaveBeenCalled();
+    expect(mockKibanaValues.navigateToUrl).toHaveBeenCalled();
+  });
+
+  it('does not call createHref if shouldNotCreateHref is passed', () => {
+    const breadcrumb = useBreadcrumbs([
+      { text: '', path: '/test', shouldNotCreateHref: true },
+    ])[0] as any;
+
+    expect(breadcrumb.href).toEqual('/test');
+    expect(mockHistory.createHref).not.toHaveBeenCalled();
   });
 
   it('does not prevent default browser behavior on new tab/window clicks', () => {
@@ -64,7 +78,7 @@ describe('useBreadcrumbs', () => {
     (letBrowserHandleEvent as jest.Mock).mockImplementationOnce(() => true);
     breadcrumb.onClick();
 
-    expect(mockKibanaContext.navigateToUrl).not.toHaveBeenCalled();
+    expect(mockKibanaValues.navigateToUrl).not.toHaveBeenCalled();
   });
 
   it('does not generate link behavior if path is excluded', () => {
@@ -95,15 +109,17 @@ describe('useEnterpriseSearchBreadcrumbs', () => {
     expect(useEnterpriseSearchBreadcrumbs(breadcrumbs)).toEqual([
       {
         text: 'Enterprise Search',
+        href: '/app/enterprise_search/overview',
+        onClick: expect.any(Function),
       },
       {
         text: 'Page 1',
-        href: '/enterprise_search/page1',
+        href: '/app/enterprise_search/page1',
         onClick: expect.any(Function),
       },
       {
         text: 'Page 2',
-        href: '/enterprise_search/page2',
+        href: '/app/enterprise_search/page2',
         onClick: expect.any(Function),
       },
     ]);
@@ -113,6 +129,8 @@ describe('useEnterpriseSearchBreadcrumbs', () => {
     expect(useEnterpriseSearchBreadcrumbs()).toEqual([
       {
         text: 'Enterprise Search',
+        href: '/app/enterprise_search/overview',
+        onClick: expect.any(Function),
       },
     ]);
   });
@@ -122,7 +140,7 @@ describe('useAppSearchBreadcrumbs', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockHistory.createHref.mockImplementation(
-      ({ pathname }: any) => `/enterprise_search/app_search${pathname}`
+      ({ pathname }: any) => `/app/enterprise_search/app_search${pathname}`
     );
   });
 
@@ -141,20 +159,22 @@ describe('useAppSearchBreadcrumbs', () => {
     expect(useAppSearchBreadcrumbs(breadcrumbs)).toEqual([
       {
         text: 'Enterprise Search',
+        href: '/app/enterprise_search/overview',
+        onClick: expect.any(Function),
       },
       {
         text: 'App Search',
-        href: '/enterprise_search/app_search/',
+        href: '/app/enterprise_search/app_search/',
         onClick: expect.any(Function),
       },
       {
         text: 'Page 1',
-        href: '/enterprise_search/app_search/page1',
+        href: '/app/enterprise_search/app_search/page1',
         onClick: expect.any(Function),
       },
       {
         text: 'Page 2',
-        href: '/enterprise_search/app_search/page2',
+        href: '/app/enterprise_search/app_search/page2',
         onClick: expect.any(Function),
       },
     ]);
@@ -164,10 +184,12 @@ describe('useAppSearchBreadcrumbs', () => {
     expect(useAppSearchBreadcrumbs()).toEqual([
       {
         text: 'Enterprise Search',
+        href: '/app/enterprise_search/overview',
+        onClick: expect.any(Function),
       },
       {
         text: 'App Search',
-        href: '/enterprise_search/app_search/',
+        href: '/app/enterprise_search/app_search/',
         onClick: expect.any(Function),
       },
     ]);
@@ -178,7 +200,7 @@ describe('useWorkplaceSearchBreadcrumbs', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockHistory.createHref.mockImplementation(
-      ({ pathname }: any) => `/enterprise_search/workplace_search${pathname}`
+      ({ pathname }: any) => `/app/enterprise_search/workplace_search${pathname}`
     );
   });
 
@@ -197,20 +219,22 @@ describe('useWorkplaceSearchBreadcrumbs', () => {
     expect(useWorkplaceSearchBreadcrumbs(breadcrumbs)).toEqual([
       {
         text: 'Enterprise Search',
+        href: '/app/enterprise_search/overview',
+        onClick: expect.any(Function),
       },
       {
         text: 'Workplace Search',
-        href: '/enterprise_search/workplace_search/',
+        href: '/app/enterprise_search/workplace_search/',
         onClick: expect.any(Function),
       },
       {
         text: 'Page 1',
-        href: '/enterprise_search/workplace_search/page1',
+        href: '/app/enterprise_search/workplace_search/page1',
         onClick: expect.any(Function),
       },
       {
         text: 'Page 2',
-        href: '/enterprise_search/workplace_search/page2',
+        href: '/app/enterprise_search/workplace_search/page2',
         onClick: expect.any(Function),
       },
     ]);
@@ -220,10 +244,12 @@ describe('useWorkplaceSearchBreadcrumbs', () => {
     expect(useWorkplaceSearchBreadcrumbs()).toEqual([
       {
         text: 'Enterprise Search',
+        href: '/app/enterprise_search/overview',
+        onClick: expect.any(Function),
       },
       {
         text: 'Workplace Search',
-        href: '/enterprise_search/workplace_search/',
+        href: '/app/enterprise_search/workplace_search/',
         onClick: expect.any(Function),
       },
     ]);

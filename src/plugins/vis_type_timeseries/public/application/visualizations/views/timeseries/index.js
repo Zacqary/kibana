@@ -29,6 +29,7 @@ import {
   AnnotationDomainTypes,
   LineAnnotation,
   TooltipType,
+  StackMode,
 } from '@elastic/charts';
 import { EuiIcon } from '@elastic/eui';
 import { getTimezone } from '../../../lib/get_timezone';
@@ -175,6 +176,7 @@ export const TimeSeries = ({
             useDefaultGroupDomain,
             y1AccessorFormat,
             y0AccessorFormat,
+            tickFormat,
           },
           sortIndex
         ) => {
@@ -197,7 +199,7 @@ export const TimeSeries = ({
                 bars={bars}
                 color={finalColor}
                 stackAccessors={stackAccessors}
-                stackAsPercentage={isPercentage}
+                stackMode={isPercentage ? StackMode.Percentage : undefined}
                 xScaleType={xScaleType}
                 yScaleType={yScaleType}
                 timeZone={timeZone}
@@ -206,6 +208,7 @@ export const TimeSeries = ({
                 sortIndex={sortIndex}
                 y1AccessorFormat={y1AccessorFormat}
                 y0AccessorFormat={y0AccessorFormat}
+                tickFormat={tickFormat}
               />
             );
           }
@@ -222,7 +225,7 @@ export const TimeSeries = ({
                 lines={lines}
                 color={finalColor}
                 stackAccessors={stackAccessors}
-                stackAsPercentage={isPercentage}
+                stackMode={isPercentage ? StackMode.Percentage : undefined}
                 points={points}
                 xScaleType={xScaleType}
                 yScaleType={yScaleType}
@@ -232,6 +235,7 @@ export const TimeSeries = ({
                 sortIndex={sortIndex}
                 y1AccessorFormat={y1AccessorFormat}
                 y0AccessorFormat={y0AccessorFormat}
+                tickFormat={tickFormat}
               />
             );
           }
@@ -248,8 +252,10 @@ export const TimeSeries = ({
           position={position}
           domain={domain}
           hide={hide}
-          showGridLines={showGrid}
-          gridLineStyle={GRID_LINE_CONFIG}
+          gridLine={{
+            ...GRID_LINE_CONFIG,
+            visible: showGrid,
+          }}
           tickFormat={tickFormatter}
         />
       ))}
@@ -259,8 +265,10 @@ export const TimeSeries = ({
         position={Position.Bottom}
         title={xAxisLabel}
         tickFormat={xAxisFormatter}
-        showGridLines={showGrid}
-        gridLineStyle={GRID_LINE_CONFIG}
+        gridLine={{
+          ...GRID_LINE_CONFIG,
+          visible: showGrid,
+        }}
       />
     </Chart>
   );

@@ -6,9 +6,7 @@
 
 // Service for carrying out requests to run ML forecasts and to obtain
 // data on forecasts that have been performed.
-import get from 'lodash/get';
-import find from 'lodash/find';
-import each from 'lodash/each';
+import { get, find, each } from 'lodash';
 import { map } from 'rxjs/operators';
 
 import { ml } from './ml_api_service';
@@ -153,7 +151,7 @@ function getForecastData(
   entityFields,
   earliestMs,
   latestMs,
-  interval,
+  intervalMs,
   aggType
 ) {
   // Extract the partition, by, over fields on which to filter.
@@ -257,7 +255,7 @@ function getForecastData(
           times: {
             date_histogram: {
               field: 'timestamp',
-              interval: interval,
+              fixed_interval: `${intervalMs}ms`,
               min_doc_count: 1,
             },
             aggs: {
