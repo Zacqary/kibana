@@ -16,6 +16,7 @@ import {
   CoreStart,
   ServiceStatusLevels,
   CoreStatus,
+  IRouter,
 } from '../../../../src/core/server';
 import { TaskPollingLifecycle } from './polling_lifecycle';
 import { TaskManagerConfig } from './config';
@@ -26,7 +27,7 @@ import { TaskDefinitionRegistry, TaskTypeDictionary, REMOVED_TYPES } from './tas
 import { FetchResult, SearchOpts, TaskStore } from './task_store';
 import { createManagedConfiguration } from './lib/create_managed_configuration';
 import { TaskScheduling } from './task_scheduling';
-import { healthRoute } from './routes';
+import { healthRoute, runNowRoute } from './routes';
 import { createMonitoringStats, MonitoringStats } from './monitoring';
 import { EphemeralTaskLifecycle } from './ephemeral_task_lifecycle';
 import { EphemeralTask } from './task';
@@ -68,6 +69,7 @@ export class TaskManagerPlugin
   private elasticsearchAndSOAvailability$?: Observable<boolean>;
   private monitoringStats$ = new Subject<MonitoringStats>();
   private readonly kibanaVersion: PluginInitializerContext['env']['packageInfo']['version'];
+  private router?: IRouter;
 
   constructor(private readonly initContext: PluginInitializerContext) {
     this.initContext = initContext;
@@ -115,6 +117,7 @@ export class TaskManagerPlugin
       getClusterClient: () =>
         startServicesPromise.then(({ elasticsearch }) => elasticsearch.client),
     });
+    this.router = router;
 
     core.status.derivedStatus$.subscribe((status) =>
       this.logger.debug(`status core.status.derivedStatus now set to ${status.level}`)
@@ -228,6 +231,13 @@ export class TaskManagerPlugin
       ephemeralTaskLifecycle: this.ephemeralTaskLifecycle,
       definitions: this.definitions,
       taskManagerId: taskStore.taskManagerId,
+    });
+
+    runNowRoute({
+      router: this.router!,
+      taskScheduling,
+      esClient: elasticsearch.client.asInternalUser,
+      index: TASK_MANAGER_INDEX,
     });
 
     return {

@@ -140,8 +140,11 @@ export class TaskPollingLifecycle {
       definitions,
       unusedTypes,
       logger: this.logger,
-      getCapacity: (taskType?: string) =>
-        taskType && this.definitions.get(taskType)?.maxConcurrency
+      getCapacity: (taskType?: string) => {
+        if (config.unsafe.disable_task_claiming) {
+          return 0;
+        }
+        return taskType && this.definitions.get(taskType)?.maxConcurrency
           ? Math.max(
               Math.min(
                 this.pool.availableWorkers,
@@ -150,7 +153,8 @@ export class TaskPollingLifecycle {
               ),
               0
             )
-          : this.pool.availableWorkers,
+          : this.pool.availableWorkers;
+      },
     });
     // pipe taskClaiming events into the lifecycle event stream
     this.taskClaiming.events.subscribe(emitEvent);

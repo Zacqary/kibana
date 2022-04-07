@@ -6,3 +6,4 @@
  */
 
 export { healthRoute } from './health';
+export { runNowRoute } from './run_now';
