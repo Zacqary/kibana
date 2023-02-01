@@ -5,5 +5,5 @@
  * 2.0.
  */
 
-export { isSnoozeActive } from './is_snooze_active';
+export { isSnoozeActive, isSnoozeActiveAtTimestamp } from './is_snooze_active';
 export { isSnoozeExpired } from './is_snooze_expired';
