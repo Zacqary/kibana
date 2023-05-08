@@ -6,6 +6,7 @@
  */
 
 import moment from 'moment';
+import { RRule, Weekday } from '@kbn/rrule';
 import React, { useCallback, useState, useMemo, useLayoutEffect, useRef } from 'react';
 import {
   EuiFlexItem,
@@ -19,20 +20,33 @@ import {
   EuiToolTip,
 } from '@elastic/eui';
 import { euiStyled } from '@kbn/kibana-react-plugin/common';
-import { IsoWeekday } from '@kbn/alerting-plugin/common';
+import { IsoWeekday, RuleSnooze } from '@kbn/alerting-plugin/common';
 import { euiThemeVars } from '@kbn/ui-theme';
 import { ISO_WEEKDAYS } from '../../../../common/constants';
 
-const CalendarRow = ({ days }) => {
-  return days.map(({ heading, isToday }) => (
-    <CalendarDay key={`calendar-day-${heading}`}>
-      {isToday ? (
-        <EuiBadge color="primary">{heading}</EuiBadge>
-      ) : (
-        <EuiText size="xs">{heading}</EuiText>
-      )}
-    </CalendarDay>
-  ));
+interface CalendarRowProps {
+  days: Array<{
+    heading: string;
+    isToday?: boolean;
+    snoozes?: any[];
+  }>;
+}
+
+const CalendarRow = ({ days }: CalendarRowProps) => {
+  return (
+    <>
+      {days.map(({ heading, isToday, snoozes }) => (
+        <CalendarDay key={`calendar-day-${heading}`}>
+          {isToday ? (
+            <EuiBadge color="primary">{heading}</EuiBadge>
+          ) : (
+            <EuiText size="xs">{heading}</EuiText>
+          )}
+          {snoozes && snoozes.map((s) => 'SNOOZE')}
+        </CalendarDay>
+      ))}
+    </>
+  );
 };
 
 const HeightWrapper: React.FC<{ padding?: number; minHeight?: number }> = ({
@@ -67,7 +81,15 @@ const HeightWrapper: React.FC<{ padding?: number; minHeight?: number }> = ({
   );
 };
 
-export const RuleScheduleCalendar = ({ wkst = 7 }) => {
+export interface RuleScheduleCalendarProps {
+  wkst?: IsoWeekday;
+  snoozeSchedule?: RuleSnooze;
+}
+
+export const RuleScheduleCalendar: React.FC<RuleScheduleCalendarProps> = ({
+  wkst = 7,
+  snoozeSchedule,
+}) => {
   const today = useRef(moment());
   const [displayedMonthYear, setDisplayedMonthYear] = useState([
     today.current.month(),
@@ -96,6 +118,58 @@ export const RuleScheduleCalendar = ({ wkst = 7 }) => {
     return weeks;
   }, [weekdayOrder, displayedMonthYear]);
 
+  const displayedSnoozeRecurrences = useMemo(() => {
+    if (!snoozeSchedule) return [];
+    const [month, year] = displayedMonthYear;
+    const firstDisplayedDay = weekRows[0][0];
+    const lastDisplayedDay = weekRows[weekRows.length - 1][6];
+
+    const occurrences = snoozeSchedule
+      .map((snooze) => {
+        const { rRule, duration, skipRecurrences, id } = snooze;
+        const recurrenceRule = new RRule({
+          ...rRule,
+          dtstart: new Date(rRule.dtstart),
+          until: rRule.until ? new Date(rRule.until) : null,
+          byweekday: rRule.byweekday ?? null,
+          wkst: rRule.wkst ? Weekday[rRule.wkst] : null,
+        });
+        const occurrences = recurrenceRule.between(
+          moment().month(month).year(year).date(firstDisplayedDay).toDate(),
+          moment().month(month).year(year).date(lastDisplayedDay).toDate()
+        );
+        return occurrences.reduce(
+          (result: Array<{ start: moment.Moment; end: moment.Moment }>, occurrence) => {
+            if (skipRecurrences?.includes(occurrence.toISOString())) return result;
+            const start = moment(occurrence);
+            const end = moment(start).add(duration, 'ms');
+            return [...result, { start, end, id }];
+          },
+          []
+        );
+      })
+      .filter(Boolean)
+      .flat();
+    return occurrences.reduce(
+      (
+        result: Record<number, Array<{ start: moment.Moment; end: moment.Moment; id?: string }>>,
+        occurrence
+      ) => {
+        const startOfMonth = moment([year, month, 1]);
+        const startDayIndex = Math.round(
+          occurrence.start.hour(0).diff(startOfMonth, 'days', true) + 1
+        );
+        const endDayIndex = Math.round(occurrence.end.hour(0).diff(startOfMonth, 'days', true) + 1);
+        for (let i = startDayIndex; i <= endDayIndex; i++) {
+          if (!result[i]) result[i] = [];
+          result[i].push(occurrence);
+        }
+        return result;
+      },
+      {}
+    );
+  }, [snoozeSchedule, weekRows, displayedMonthYear]);
+
   const calendarRows = useMemo(
     () =>
       weekRows.map((week, weekIdx) => {
@@ -104,18 +178,20 @@ export const RuleScheduleCalendar = ({ wkst = 7 }) => {
         const days = week.map((d) => {
           const dateMoment = moment().month(month).year(year).date(d);
           const actualDateOfMonth = dateMoment.date();
-          if (actualDateOfMonth === 1) return { heading: `${dateMoment.format('MMM D')}` };
+          const heading =
+            actualDateOfMonth === 1 ? `${dateMoment.format('MMM D')}` : String(actualDateOfMonth);
           return {
-            heading: String(actualDateOfMonth),
+            heading,
             isToday:
               dateMoment.diff(today.current, 'days') === 0 &&
               dateMoment.date() === today.current.date(),
+            snoozes: displayedSnoozeRecurrences[d],
           };
         });
 
         return <CalendarRow days={days} key={`week-${weekIdx}`} />;
       }),
-    [weekRows, displayedMonthYear]
+    [weekRows, displayedMonthYear, displayedSnoozeRecurrences]
   );
 
   const monthYearHeading = useMemo(
