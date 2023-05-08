@@ -34,6 +34,7 @@ import {
 const RuleEventLogList = lazy(() => import('./rule_event_log_list'));
 const RuleAlertList = lazy(() => import('./rule_alert_list'));
 const RuleDefinition = lazy(() => import('./rule_definition'));
+const RuleScheduleCalendar = lazy(() => import('./rule_schedule_calendar'));
 
 type RuleProps = {
   rule: Rule;
@@ -122,6 +123,26 @@ export function RuleComponent({
         'xl'
       )({
         fetchRuleSummary: false,
+        ruleId: rule.id,
+        ruleType,
+        ruleSummary,
+        numberOfExecutions,
+        refreshToken,
+        isLoadingRuleSummary: isLoadingChart,
+        onChangeDuration,
+        requestRefresh,
+      }),
+    },
+    {
+      id: 'rule_schedule_calendar',
+      name: i18n.translate('xpack.triggersActionsUI.sections.ruleDetails.rule.scheduleTabText', {
+        defaultMessage: 'Schedule',
+      }),
+      'data-test-subj': 'scheduleTab',
+      content: suspendedComponentWithProps<RuleEventLogListProps<'stackManagement'>>(
+        RuleScheduleCalendar,
+        'xl'
+      )({
         ruleId: rule.id,
         ruleType,
         ruleSummary,
