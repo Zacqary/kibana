@@ -30,6 +30,7 @@ import {
   rulesLastRunOutcomeTranslationMapping,
   rulesStatusesTranslationsMapping,
 } from '../../rules_list/translations';
+import { RuleScheduleCalendarProps } from './rule_schedule_calendar';
 
 const RuleEventLogList = lazy(() => import('./rule_event_log_list'));
 const RuleAlertList = lazy(() => import('./rule_alert_list'));
@@ -139,18 +140,11 @@ export function RuleComponent({
         defaultMessage: 'Schedule',
       }),
       'data-test-subj': 'scheduleTab',
-      content: suspendedComponentWithProps<RuleEventLogListProps<'stackManagement'>>(
+      content: suspendedComponentWithProps<RuleScheduleCalendarProps>(
         RuleScheduleCalendar,
         'xl'
       )({
-        ruleId: rule.id,
-        ruleType,
-        ruleSummary,
-        numberOfExecutions,
-        refreshToken,
-        isLoadingRuleSummary: isLoadingChart,
-        onChangeDuration,
-        requestRefresh,
+        snoozeSchedule: rule.snoozeSchedule,
       }),
     },
   ];
