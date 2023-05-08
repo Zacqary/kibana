@@ -21,6 +21,7 @@ import {
 } from '@elastic/eui';
 import { euiStyled } from '@kbn/kibana-react-plugin/common';
 import { IsoWeekday, RuleSnooze } from '@kbn/alerting-plugin/common';
+import { useFindMaintenanceWindows } from '@kbn/alerting-plugin/public';
 import { euiThemeVars } from '@kbn/ui-theme';
 import { ISO_WEEKDAYS } from '../../../../common/constants';
 
@@ -29,20 +30,23 @@ interface CalendarRowProps {
     heading: string;
     isToday?: boolean;
     snoozes?: any[];
+    maintenanceWindows?: any[];
   }>;
 }
 
 const CalendarRow = ({ days }: CalendarRowProps) => {
   return (
     <>
-      {days.map(({ heading, isToday, snoozes }) => (
+      {days.map(({ heading, isToday, snoozes, maintenanceWindows }) => (
         <CalendarDay key={`calendar-day-${heading}`}>
           {isToday ? (
             <EuiBadge color="primary">{heading}</EuiBadge>
           ) : (
             <EuiText size="xs">{heading}</EuiText>
           )}
-          {snoozes && snoozes.map((s) => 'SNOOZE')}
+          {snoozes && snoozes.map((s) => <EuiBadge color="primary">SNOOZE</EuiBadge>)}
+          {maintenanceWindows &&
+            maintenanceWindows.map((w) => <EuiBadge color="accent">MAINTENANCE</EuiBadge>)}
         </CalendarDay>
       ))}
     </>
@@ -81,6 +85,57 @@ const HeightWrapper: React.FC<{ padding?: number; minHeight?: number }> = ({
   );
 };
 
+function windowsToDisplayedOccurrences(schedule?: RuleSnooze, displayedMonthYear, weekRows) {
+  if (!schedule) return [];
+  const [month, year] = displayedMonthYear;
+  const firstDisplayedDay = weekRows[0][0];
+  const lastDisplayedDay = weekRows[weekRows.length - 1][6];
+  const occurrences = schedule
+    .map((snooze) => {
+      const { rRule, duration, skipRecurrences, id } = snooze;
+      const recurrenceRule = new RRule({
+        ...rRule,
+        dtstart: new Date(rRule.dtstart),
+        until: rRule.until ? new Date(rRule.until) : null,
+        byweekday: rRule.byweekday ?? null,
+        wkst: rRule.wkst ? Weekday[rRule.wkst] : null,
+      });
+      const occurrences = recurrenceRule.between(
+        moment().month(month).year(year).date(firstDisplayedDay).toDate(),
+        moment().month(month).year(year).date(lastDisplayedDay).toDate()
+      );
+      return occurrences.reduce(
+        (result: Array<{ start: moment.Moment; end: moment.Moment }>, occurrence) => {
+          if (skipRecurrences?.includes(occurrence.toISOString())) return result;
+          const start = moment(occurrence);
+          const end = moment(start).add(duration, 'ms');
+          return [...result, { start, end, id }];
+        },
+        []
+      );
+    })
+    .filter(Boolean)
+    .flat();
+  return occurrences.reduce(
+    (
+      result: Record<number, Array<{ start: moment.Moment; end: moment.Moment; id?: string }>>,
+      occurrence
+    ) => {
+      const startOfMonth = moment([year, month, 1]);
+      const startDayIndex = Math.round(
+        occurrence.start.hour(0).diff(startOfMonth, 'days', true) + 1
+      );
+      const endDayIndex = Math.round(occurrence.end.hour(0).diff(startOfMonth, 'days', true) + 1);
+      for (let i = startDayIndex; i <= endDayIndex; i++) {
+        if (!result[i]) result[i] = [];
+        result[i].push(occurrence);
+      }
+      return result;
+    },
+    {}
+  );
+}
+
 export interface RuleScheduleCalendarProps {
   wkst?: IsoWeekday;
   snoozeSchedule?: RuleSnooze;
@@ -100,6 +155,10 @@ export const RuleScheduleCalendar: React.FC<RuleScheduleCalendarProps> = ({
     return [...ISO_WEEKDAYS.slice(wkstIndex), ...ISO_WEEKDAYS.slice(0, wkstIndex)];
   }, [wkst]);
 
+  const { maintenanceWindows, refetch } = useFindMaintenanceWindows({
+    enabled: true,
+  });
+
   const weekRows = useMemo(() => {
     const [month, year] = displayedMonthYear;
     const firstOfMonth = moment().month(month).year(year).date(1);
@@ -118,57 +177,14 @@ export const RuleScheduleCalendar: React.FC<RuleScheduleCalendarProps> = ({
     return weeks;
   }, [weekdayOrder, displayedMonthYear]);
 
-  const displayedSnoozeRecurrences = useMemo(() => {
-    if (!snoozeSchedule) return [];
-    const [month, year] = displayedMonthYear;
-    const firstDisplayedDay = weekRows[0][0];
-    const lastDisplayedDay = weekRows[weekRows.length - 1][6];
-
-    const occurrences = snoozeSchedule
-      .map((snooze) => {
-        const { rRule, duration, skipRecurrences, id } = snooze;
-        const recurrenceRule = new RRule({
-          ...rRule,
-          dtstart: new Date(rRule.dtstart),
-          until: rRule.until ? new Date(rRule.until) : null,
-          byweekday: rRule.byweekday ?? null,
-          wkst: rRule.wkst ? Weekday[rRule.wkst] : null,
-        });
-        const occurrences = recurrenceRule.between(
-          moment().month(month).year(year).date(firstDisplayedDay).toDate(),
-          moment().month(month).year(year).date(lastDisplayedDay).toDate()
-        );
-        return occurrences.reduce(
-          (result: Array<{ start: moment.Moment; end: moment.Moment }>, occurrence) => {
-            if (skipRecurrences?.includes(occurrence.toISOString())) return result;
-            const start = moment(occurrence);
-            const end = moment(start).add(duration, 'ms');
-            return [...result, { start, end, id }];
-          },
-          []
-        );
-      })
-      .filter(Boolean)
-      .flat();
-    return occurrences.reduce(
-      (
-        result: Record<number, Array<{ start: moment.Moment; end: moment.Moment; id?: string }>>,
-        occurrence
-      ) => {
-        const startOfMonth = moment([year, month, 1]);
-        const startDayIndex = Math.round(
-          occurrence.start.hour(0).diff(startOfMonth, 'days', true) + 1
-        );
-        const endDayIndex = Math.round(occurrence.end.hour(0).diff(startOfMonth, 'days', true) + 1);
-        for (let i = startDayIndex; i <= endDayIndex; i++) {
-          if (!result[i]) result[i] = [];
-          result[i].push(occurrence);
-        }
-        return result;
-      },
-      {}
-    );
-  }, [snoozeSchedule, weekRows, displayedMonthYear]);
+  const displayedSnoozeRecurrences = useMemo(
+    () => windowsToDisplayedOccurrences(snoozeSchedule, displayedMonthYear, weekRows),
+    [snoozeSchedule, weekRows, displayedMonthYear]
+  );
+  const displayedMaintenanceRecurrences = useMemo(
+    () => windowsToDisplayedOccurrences(maintenanceWindows, displayedMonthYear, weekRows),
+    [snoozeSchedule, weekRows, displayedMonthYear]
+  );
 
   const calendarRows = useMemo(
     () =>
@@ -186,6 +202,7 @@ export const RuleScheduleCalendar: React.FC<RuleScheduleCalendarProps> = ({
               dateMoment.diff(today.current, 'days') === 0 &&
               dateMoment.date() === today.current.date(),
             snoozes: displayedSnoozeRecurrences[d],
+            maintenanceWindows: displayedMaintenanceRecurrences[d],
           };
         });
 
