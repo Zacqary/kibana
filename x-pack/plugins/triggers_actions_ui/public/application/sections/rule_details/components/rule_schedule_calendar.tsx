@@ -35,20 +35,52 @@ interface CalendarRowProps {
 }
 
 const CalendarRow = ({ days }: CalendarRowProps) => {
+  const allDayEventLengthMap = days.reduce(
+    (result: Record<string, number>, { snoozes, maintenanceWindows }) => {
+      snoozes?.forEach((s) => {
+        if (!result[s.id]) result[s.id] = 0;
+        result[s.id] += 1;
+      });
+      maintenanceWindows?.forEach((w) => {
+        if (!result[w.id]) result[w.id] = 0;
+        result[w.id] += 1;
+      });
+      return result;
+    },
+    {}
+  );
+
+  console.log(allDayEventLengthMap);
+
   return (
     <>
-      {days.map(({ heading, isToday, snoozes, maintenanceWindows }) => (
-        <CalendarDay key={`calendar-day-${heading}`}>
-          {isToday ? (
-            <EuiBadge color="primary">{heading}</EuiBadge>
-          ) : (
-            <EuiText size="xs">{heading}</EuiText>
-          )}
-          {snoozes && snoozes.map((s) => <EuiBadge color="primary">SNOOZE</EuiBadge>)}
-          {maintenanceWindows &&
-            maintenanceWindows.map((w) => <EuiBadge color="accent">MAINTENANCE</EuiBadge>)}
-        </CalendarDay>
-      ))}
+      {days.map(({ heading, isToday, snoozes, maintenanceWindows }, i) => {
+        const allDayEvents = [
+          ...(snoozes ?? []).map((s) => ({ ...s, color: 'primary' })),
+          ...(maintenanceWindows ?? []).map((w) => ({ ...w, color: 'accent' })),
+        ].sort((a, b) => {
+          return (
+            (allDayEventLengthMap[b.id] ?? 0) - (allDayEventLengthMap[a.id] ?? 0) ||
+            (a.id > b.id ? 1 : -1)
+          );
+        });
+
+        return (
+          <CalendarDay key={`calendar-day-${heading}`}>
+            <EuiSpacer size="xs" />
+            {isToday ? (
+              <EuiBadge color="primary">{heading}</EuiBadge>
+            ) : (
+              <EuiText size="xs">{heading}</EuiText>
+            )}
+            {allDayEvents.map((e) => (
+              <AllDayEventBadge key={e.id} color={e.color} isStart={e.isStart} isEnd={e.isEnd}>
+                {e.isStart || i === 0 ? e.title : ' '}
+              </AllDayEventBadge>
+            ))}
+          </CalendarDay>
+        );
+      })}
     </>
   );
 };
@@ -91,7 +123,7 @@ function windowsToDisplayedOccurrences(schedule?: RuleSnooze, displayedMonthYear
   const firstDisplayedDay = weekRows[0][0];
   const lastDisplayedDay = weekRows[weekRows.length - 1][6];
   const occurrences = schedule
-    .map((snooze) => {
+    .map((snooze, i) => {
       const { rRule, duration, skipRecurrences, id } = snooze;
       const recurrenceRule = new RRule({
         ...rRule,
@@ -105,11 +137,15 @@ function windowsToDisplayedOccurrences(schedule?: RuleSnooze, displayedMonthYear
         moment().month(month).year(year).date(lastDisplayedDay).toDate()
       );
       return occurrences.reduce(
-        (result: Array<{ start: moment.Moment; end: moment.Moment }>, occurrence) => {
+        (
+          result: Array<{ start: moment.Moment; end: moment.Moment; title: string; id?: string }>,
+          occurrence
+        ) => {
           if (skipRecurrences?.includes(occurrence.toISOString())) return result;
           const start = moment(occurrence);
           const end = moment(start).add(duration, 'ms');
-          return [...result, { start, end, id }];
+          const title = snooze.title ?? (snooze.id ? 'Scheduled snooze' : 'Relative snooze');
+          return [...result, { start, end, id: id ?? `relative-${i}`, title }];
         },
         []
       );
@@ -118,7 +154,16 @@ function windowsToDisplayedOccurrences(schedule?: RuleSnooze, displayedMonthYear
     .flat();
   return occurrences.reduce(
     (
-      result: Record<number, Array<{ start: moment.Moment; end: moment.Moment; id?: string }>>,
+      result: Record<
+        number,
+        Array<{
+          start: moment.Moment;
+          end: moment.Moment;
+          id?: string;
+          isStart: boolean;
+          isEnd: boolean;
+        }>
+      >,
       occurrence
     ) => {
       const startOfMonth = moment([year, month, 1]);
@@ -128,7 +173,7 @@ function windowsToDisplayedOccurrences(schedule?: RuleSnooze, displayedMonthYear
       const endDayIndex = Math.round(occurrence.end.hour(0).diff(startOfMonth, 'days', true) + 1);
       for (let i = startDayIndex; i <= endDayIndex; i++) {
         if (!result[i]) result[i] = [];
-        result[i].push(occurrence);
+        result[i].push({ ...occurrence, isStart: i === startDayIndex, isEnd: i === endDayIndex });
       }
       return result;
     },
@@ -181,10 +226,9 @@ export const RuleScheduleCalendar: React.FC<RuleScheduleCalendarProps> = ({
     () => windowsToDisplayedOccurrences(snoozeSchedule, displayedMonthYear, weekRows),
     [snoozeSchedule, weekRows, displayedMonthYear]
   );
-  const displayedMaintenanceRecurrences = useMemo(
-    () => windowsToDisplayedOccurrences(maintenanceWindows, displayedMonthYear, weekRows),
-    [snoozeSchedule, weekRows, displayedMonthYear]
-  );
+  const displayedMaintenanceRecurrences = useMemo(() => {
+    return windowsToDisplayedOccurrences(maintenanceWindows, displayedMonthYear, weekRows);
+  }, [maintenanceWindows, weekRows, displayedMonthYear]);
 
   const calendarRows = useMemo(
     () =>
@@ -208,7 +252,7 @@ export const RuleScheduleCalendar: React.FC<RuleScheduleCalendarProps> = ({
 
         return <CalendarRow days={days} key={`week-${weekIdx}`} />;
       }),
-    [weekRows, displayedMonthYear, displayedSnoozeRecurrences]
+    [weekRows, displayedMonthYear, displayedSnoozeRecurrences, displayedMaintenanceRecurrences]
   );
 
   const monthYearHeading = useMemo(
@@ -283,7 +327,7 @@ const CalendarDay = euiStyled(EuiFlexItem)`
   align-items: center;
   border-right: 1px solid ${euiThemeVars.euiColorLightShade};
   border-bottom: 1px solid ${euiThemeVars.euiColorLightShade};
-  padding: 8px;
+  position: relative;
   &:nth-child(7n) {
     border-right: none;
   }
@@ -308,6 +352,25 @@ const CalendarHeading = euiStyled(EuiFlexItem).attrs({ grow: false })`
   text-transform: uppercase;
   font-size: ${euiThemeVars.euiFontSizeXS};
   color: ${euiThemeVars.euiTextSubduedColor};
+`;
+
+const AllDayEventBadge = euiStyled(EuiBadge)`
+  display: block;
+  width: 100%;
+  transform: scaleX(1.05);
+  margin: 1px 0;
+  margin-inline-start: ${(props) => (props.isStart ? '16px' : 0)} !important;
+  margin-inline-end: ${(props) => (props.isEnd ? '17px' : 0)};
+  z-index: 1;
+  ${(props) =>
+    props.isStart &&
+    !props.isEnd &&
+    `
+  z-index: 2;
+  & * {
+    overflow: visible !important;
+  }
+`}
 `;
 
 // eslint-disable-next-line import/no-default-export
