@@ -74,8 +74,6 @@ const CalendarRow = ({ days }: CalendarRowProps) => {
     }
   }
 
-  console.log(allDayEventOrder);
-
   return (
     <>
       {days.map(({ heading, isToday, snoozes, maintenanceWindows }, i) => {
@@ -93,8 +91,6 @@ const CalendarRow = ({ days }: CalendarRowProps) => {
           if (!allDayEvents[idx]) allDayEvents[idx] = null;
         }
 
-        console.log(allDayEvents);
-
         return (
           <CalendarDay key={`calendar-day-${heading}`}>
             <EuiSpacer size="xs" />
@@ -107,7 +103,12 @@ const CalendarRow = ({ days }: CalendarRowProps) => {
               !e ? (
                 <AllDayEventSpacer />
               ) : (
-                <AllDayEventBadge key={e.id} color={e.color} isStart={e.isStart} isEnd={e.isEnd}>
+                <AllDayEventBadge
+                  key={e.id}
+                  color={e.color}
+                  isStart={e.isStart || i === 0}
+                  isEnd={e.isEnd || i === days.length - 1}
+                >
                   {e.isStart || i === 0 ? e.title : ' '}
                 </AllDayEventBadge>
               )
@@ -357,6 +358,26 @@ const CalendarGrid = euiStyled.div`
   border-radius: 8px;
 `;
 
+const AllDayEventBadge = euiStyled(EuiBadge)`
+  display: block;
+  width: 100%;
+  margin: 1px 0;
+  margin-inline-start: ${(props) => (props.isStart ? '8px' : 0)} !important;
+  margin-inline-end: ${(props) => (props.isEnd ? '8px' : 0)};
+  ${(props) => !props.isStart && !props.isEnd && `transform: scaleX(1.02);`}
+  ${(props) => props.isStart && props.isEnd && `transform: scaleX(0.96);`}
+  z-index: 1;
+  ${(props) =>
+    props.isStart &&
+    !props.isEnd &&
+    `
+  z-index: 2;
+  & * {
+    overflow: visible !important;
+  }
+`}
+`;
+
 const CalendarDay = euiStyled(EuiFlexItem)`
   align-items: center;
   border-right: 1px solid ${euiThemeVars.euiColorLightShade};
@@ -386,25 +407,6 @@ const CalendarHeading = euiStyled(EuiFlexItem).attrs({ grow: false })`
   text-transform: uppercase;
   font-size: ${euiThemeVars.euiFontSizeXS};
   color: ${euiThemeVars.euiTextSubduedColor};
-`;
-
-const AllDayEventBadge = euiStyled(EuiBadge)`
-  display: block;
-  width: 100%;
-  transform: scaleX(1.05);
-  margin: 1px 0;
-  margin-inline-start: ${(props) => (props.isStart ? '16px' : 0)} !important;
-  margin-inline-end: ${(props) => (props.isEnd ? '17px' : 0)};
-  z-index: 1;
-  ${(props) =>
-    props.isStart &&
-    !props.isEnd &&
-    `
-  z-index: 2;
-  & * {
-    overflow: visible !important;
-  }
-`}
 `;
 
 const AllDayEventSpacer = euiStyled(EuiSpacer)`
