@@ -36,34 +36,64 @@ interface CalendarRowProps {
 
 const CalendarRow = ({ days }: CalendarRowProps) => {
   const allDayEventLengthMap = days.reduce(
-    (result: Record<string, number>, { snoozes, maintenanceWindows }) => {
+    (
+      result: Record<string, { length: number; days: number[] }>,
+      { snoozes, maintenanceWindows },
+      i
+    ) => {
       snoozes?.forEach((s) => {
-        if (!result[s.id]) result[s.id] = 0;
-        result[s.id] += 1;
+        if (!result[s.id]) result[s.id] = { length: 0, days: [] };
+        result[s.id].length += 1;
+        result[s.id].days.push(i);
       });
       maintenanceWindows?.forEach((w) => {
-        if (!result[w.id]) result[w.id] = 0;
-        result[w.id] += 1;
+        if (!result[w.id]) result[w.id] = { length: 0, days: [] };
+        result[w.id].length += 1;
+        result[w.id].days.push(i);
       });
       return result;
     },
     {}
   );
 
-  console.log(allDayEventLengthMap);
+  const allDayEventOrder: Record<string, number> = {};
+
+  for (let i = 0; i < days.length; i++) {
+    const { snoozes, maintenanceWindows } = days[i];
+    const allDayEvents = [...(snoozes ?? []), ...(maintenanceWindows ?? [])].sort((a, b) => {
+      return (
+        (allDayEventLengthMap[b.id].length ?? 0) - (allDayEventLengthMap[a.id].length ?? 0) ||
+        (a.id > b.id ? 1 : -1)
+      );
+    });
+
+    for (let eventIdx = 0; eventIdx < allDayEvents.length; eventIdx++) {
+      const event = allDayEvents[eventIdx];
+      const currentPos = allDayEventOrder[event.id] ?? 0;
+      allDayEventOrder[event.id] = Math.max(currentPos, eventIdx);
+    }
+  }
+
+  console.log(allDayEventOrder);
 
   return (
     <>
       {days.map(({ heading, isToday, snoozes, maintenanceWindows }, i) => {
-        const allDayEvents = [
+        const eventBadges = [
           ...(snoozes ?? []).map((s) => ({ ...s, color: 'primary' })),
           ...(maintenanceWindows ?? []).map((w) => ({ ...w, color: 'accent' })),
-        ].sort((a, b) => {
-          return (
-            (allDayEventLengthMap[b.id] ?? 0) - (allDayEventLengthMap[a.id] ?? 0) ||
-            (a.id > b.id ? 1 : -1)
-          );
-        });
+        ];
+        const allDayEvents = [];
+        for (const event of eventBadges) {
+          const { id } = event;
+          const index = allDayEventOrder[id];
+          allDayEvents[index] = event;
+        }
+        for (let idx = 0; idx < allDayEvents.length; idx++) {
+          if (!allDayEvents[idx]) allDayEvents[idx] = null;
+        }
+
+        console.log(allDayEvents);
 
         return (
           <CalendarDay key={`calendar-day-${heading}`}>
@@ -73,11 +103,15 @@ const CalendarRow = ({ days }: CalendarRowProps) => {
             ) : (
               <EuiText size="xs">{heading}</EuiText>
             )}
-            {allDayEvents.map((e) => (
-              <AllDayEventBadge key={e.id} color={e.color} isStart={e.isStart} isEnd={e.isEnd}>
-                {e.isStart || i === 0 ? e.title : ' '}
-              </AllDayEventBadge>
-            ))}
+            {allDayEvents.map((e, idx) =>
+              !e ? (
+                <AllDayEventSpacer />
+              ) : (
+                <AllDayEventBadge key={e.id} color={e.color} isStart={e.isStart} isEnd={e.isEnd}>
+                  {e.isStart || i === 0 ? e.title : ' '}
+                </AllDayEventBadge>
+              )
+            )}
           </CalendarDay>
         );
       })}
@@ -371,6 +405,10 @@ const AllDayEventBadge = euiStyled(EuiBadge)`
     overflow: visible !important;
   }
 `}
+`;
+
+const AllDayEventSpacer = euiStyled(EuiSpacer)`
+  block-size: 22px;
 `;
 
 // eslint-disable-next-line import/no-default-export
