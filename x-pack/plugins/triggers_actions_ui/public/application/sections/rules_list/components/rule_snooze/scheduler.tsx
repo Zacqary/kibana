@@ -146,9 +146,21 @@ const RuleSnoozeSchedulerPanel: React.FunctionComponent<PanelOpts> = ({
           ...(initialSchedule.rRule.until ? { until: moment(initialSchedule.rRule.until) } : {}),
         } as RecurrenceSchedule);
 
+    // Ensure intitial datetimes are displayed in the initial timezone
+    const startMoment = moment(initialSchedule.rRule.dtstart).tz(initialSchedule.rRule.tzid);
+    const dtstartOffsetToKibanaTz = moment()
+      .tz(defaultTz)
+      .year(startMoment.year())
+      .month(startMoment.month())
+      .date(startMoment.date())
+      .hour(startMoment.hour())
+      .minute(startMoment.minute())
+      .second(startMoment.second())
+      .millisecond(startMoment.millisecond())
+      .toISOString();
     return {
-      startDT: moment(initialSchedule.rRule.dtstart),
-      endDT: moment(initialSchedule.rRule.dtstart).add(initialSchedule.duration, 'ms'),
+      startDT: moment(dtstartOffsetToKibanaTz),
+      endDT: moment(dtstartOffsetToKibanaTz).add(initialSchedule.duration, 'ms'),
       isRecurring,
       recurrenceSchedule,
       selectedTimezone: [{ label: initialSchedule.rRule.tzid }],
@@ -220,6 +232,7 @@ const RuleSnoozeSchedulerPanel: React.FunctionComponent<PanelOpts> = ({
     if (!startDT || !endDT) return;
 
     const tzid = selectedTimezone[0].label ?? defaultTz;
+    // Convert the dtstart from Kibana timezone to the selected timezone
     const dtstart = moment()
       .tz(tzid)
       .year(startDT.year())
