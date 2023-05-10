@@ -218,17 +218,30 @@ const RuleSnoozeSchedulerPanel: React.FunctionComponent<PanelOpts> = ({
 
   const onClickSaveSchedule = useCallback(() => {
     if (!startDT || !endDT) return;
+
+    const tzid = selectedTimezone[0].label ?? defaultTz;
+    const dtstart = moment()
+      .tz(tzid)
+      .year(startDT.year())
+      .month(startDT.month())
+      .date(startDT.date())
+      .hour(startDT.hour())
+      .minute(startDT.minute())
+      .second(startDT.second())
+      .toISOString();
+
     const recurrence =
       isRecurring && recurrenceSchedule
         ? recurrenceSchedule
         : {
             count: 1,
           };
+
     onSaveSchedule({
       id: initialSchedule?.id ?? uuidv4(),
       rRule: {
-        dtstart: startDT.toISOString(),
-        tzid: selectedTimezone[0].label ?? defaultTz,
+        dtstart,
+        tzid,
         ...recurrence,
       },
       duration: endDT.valueOf() - startDT.valueOf(),
