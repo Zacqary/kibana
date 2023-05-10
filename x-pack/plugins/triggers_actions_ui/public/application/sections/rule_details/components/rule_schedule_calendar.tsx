@@ -20,19 +20,35 @@ import {
   EuiToolTip,
 } from '@elastic/eui';
 import { euiStyled } from '@kbn/kibana-react-plugin/common';
-import { IsoWeekday, RuleSnooze } from '@kbn/alerting-plugin/common';
+import { IsoWeekday, RuleSnoozeSchedule } from '@kbn/alerting-plugin/common';
 import { useFindMaintenanceWindows } from '@kbn/alerting-plugin/public';
 import { euiThemeVars } from '@kbn/ui-theme';
 import { ISO_WEEKDAYS } from '../../../../common/constants';
+
+type EventWindow = RuleSnoozeSchedule & {
+  title?: string;
+};
+
+interface DisplayedOccurrence {
+  title: string;
+  id: string;
+  start: string;
+  end: string;
+  allDay: boolean;
+  isStart: boolean;
+  isEnd: boolean;
+}
 
 interface CalendarRowProps {
   days: Array<{
     heading: string;
     isToday?: boolean;
-    snoozes?: any[];
-    maintenanceWindows?: any[];
+    snoozes?: DisplayedOccurrence[];
+    maintenanceWindows?: DisplayedOccurrence[];
   }>;
 }
+
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 const CalendarRow = ({ days }: CalendarRowProps) => {
   const allDayEventLengthMap = days.reduce(
@@ -42,11 +58,13 @@ const CalendarRow = ({ days }: CalendarRowProps) => {
       i
     ) => {
       snoozes?.forEach((s) => {
+        if (!s.allDay) return;
         if (!result[s.id]) result[s.id] = { length: 0, days: [] };
         result[s.id].length += 1;
         result[s.id].days.push(i);
       });
       maintenanceWindows?.forEach((w) => {
+        if (!w.allDay) return;
         if (!result[w.id]) result[w.id] = { length: 0, days: [] };
         result[w.id].length += 1;
         result[w.id].days.push(i);
@@ -60,7 +78,10 @@ const CalendarRow = ({ days }: CalendarRowProps) => {
 
   for (let i = 0; i < days.length; i++) {
     const { snoozes, maintenanceWindows } = days[i];
-    const allDayEvents = [...(snoozes ?? []), ...(maintenanceWindows ?? [])].sort((a, b) => {
+    const allDaySnoozes = snoozes?.filter((s) => s.allDay) ?? [];
+    const allDayMaintenanceWindows = maintenanceWindows?.filter((w) => w.allDay) ?? [];
+
+    const allDayEvents = [...allDaySnoozes, ...allDayMaintenanceWindows].sort((a, b) => {
       return (
         (allDayEventLengthMap[b.id].length ?? 0) - (allDayEventLengthMap[a.id].length ?? 0) ||
         (a.id > b.id ? 1 : -1)
@@ -77,12 +98,14 @@ const CalendarRow = ({ days }: CalendarRowProps) => {
   return (
     <>
       {days.map(({ heading, isToday, snoozes, maintenanceWindows }, i) => {
-        const eventBadges = [
-          ...(snoozes ?? []).map((s) => ({ ...s, color: 'primary' })),
-          ...(maintenanceWindows ?? []).map((w) => ({ ...w, color: 'accent' })),
+        const allDaySnoozes = snoozes?.filter((s) => s.allDay) ?? [];
+        const allDayMaintenanceWindows = maintenanceWindows?.filter((w) => w.allDay) ?? [];
+        const allDayEventBadges = [
+          ...allDaySnoozes.map((s) => ({ ...s, color: 'primary' })),
+          ...allDayMaintenanceWindows.map((w) => ({ ...w, color: 'accent' })),
         ];
         const allDayEvents = [];
-        for (const event of eventBadges) {
+        for (const event of allDayEventBadges) {
           const { id } = event;
           const index = allDayEventOrder[id];
           allDayEvents[index] = event;
@@ -90,6 +113,13 @@ const CalendarRow = ({ days }: CalendarRowProps) => {
         for (let idx = 0; idx < allDayEvents.length; idx++) {
           if (!allDayEvents[idx]) allDayEvents[idx] = null;
         }
+
+        const todaySnoozes = snoozes?.filter((s) => !s.allDay) ?? [];
+        const todayMaintenanceWindows = maintenanceWindows?.filter((w) => !w.allDay) ?? [];
+        const todayEvents = [
+          ...todaySnoozes.map((s) => ({ ...s, color: 'primary' })),
+          ...todayMaintenanceWindows.map((w) => ({ ...w, color: 'accent' })),
+        ].sort((a, b) => moment(a.start).diff(b.start, 'ms'));
 
         return (
           <CalendarDay key={`calendar-day-${heading}`}>
@@ -101,18 +131,32 @@ const CalendarRow = ({ days }: CalendarRowProps) => {
             )}
             {allDayEvents.map((e, idx) =>
               !e ? (
-                <AllDayEventSpacer />
+                <AllDayEventSpacer key={`spacer-${i}-${idx}`} />
               ) : (
                 <AllDayEventBadge
                   key={e.id}
                   color={e.color}
-                  isStart={e.isStart || i === 0}
-                  isEnd={e.isEnd || i === days.length - 1}
+                  $isStart={e.isStart || i === 0}
+                  $isEnd={e.isEnd || i === days.length - 1}
                 >
                   {e.isStart || i === 0 ? e.title : ' '}
                 </AllDayEventBadge>
               )
             )}
+            {todayEvents.map((e, idx) => (
+              <TodayEventBadge
+                key={e.id}
+                $color={e.color}
+                $isStart={e.isStart || i === 0}
+                $isEnd={e.isEnd || i === days.length - 1}
+              >
+                {e.title}{' '}
+                <EuiText size="xs" color="subdued">
+                  {moment(e.start).format(`h${moment(e.start).minute() > 0 ? ':mm' : ''}a`)}-
+                  {moment(e.end).format(`h${moment(e.end).minute() > 0 ? ':mm' : ''}a`)}
+                </EuiText>
+              </TodayEventBadge>
+            ))}
           </CalendarDay>
         );
       })}
@@ -152,7 +196,11 @@ const HeightWrapper: React.FC<{ padding?: number; minHeight?: number }> = ({
   );
 };
 
-function windowsToDisplayedOccurrences(schedule?: RuleSnooze, displayedMonthYear, weekRows) {
+function windowsToDisplayedOccurrences(
+  schedule: EventWindow[] | undefined,
+  displayedMonthYear: number[],
+  weekRows: number[][]
+) {
   if (!schedule) return [];
   const [month, year] = displayedMonthYear;
   const firstDisplayedDay = weekRows[0][0];
@@ -172,15 +220,15 @@ function windowsToDisplayedOccurrences(schedule?: RuleSnooze, displayedMonthYear
         moment().month(month).year(year).date(lastDisplayedDay).toDate()
       );
       return occurrences.reduce(
-        (
-          result: Array<{ start: moment.Moment; end: moment.Moment; title: string; id?: string }>,
-          occurrence
-        ) => {
+        (result: Array<{ start: string; end: string; title: string; id?: string }>, occurrence) => {
           if (skipRecurrences?.includes(occurrence.toISOString())) return result;
-          const start = moment(occurrence);
-          const end = moment(start).add(duration, 'ms');
-          const title = snooze.title ?? (snooze.id ? 'Scheduled snooze' : 'Relative snooze');
-          return [...result, { start, end, id: id ?? `relative-${i}`, title }];
+          const start = moment(occurrence).toISOString();
+          const end = moment(occurrence).add(duration, 'ms').toISOString();
+          const title = snooze.title ?? 'Snooze';
+          return [
+            ...result,
+            { start, end, id: id ?? `relative-${i}`, title, allDay: duration >= ONE_DAY_MS },
+          ];
         },
         []
       );
@@ -192,8 +240,8 @@ function windowsToDisplayedOccurrences(schedule?: RuleSnooze, displayedMonthYear
       result: Record<
         number,
         Array<{
-          start: moment.Moment;
-          end: moment.Moment;
+          start: string;
+          end: string;
           id?: string;
           isStart: boolean;
           isEnd: boolean;
@@ -203,9 +251,11 @@ function windowsToDisplayedOccurrences(schedule?: RuleSnooze, displayedMonthYear
     ) => {
       const startOfMonth = moment([year, month, 1]);
       const startDayIndex = Math.round(
-        occurrence.start.hour(0).diff(startOfMonth, 'days', true) + 1
+        moment(occurrence.start).hour(0).diff(startOfMonth, 'days', true) + 1
       );
-      const endDayIndex = Math.round(occurrence.end.hour(0).diff(startOfMonth, 'days', true) + 1);
+      const endDayIndex = Math.round(
+        moment(occurrence.end).hour(0).diff(startOfMonth, 'days', true) + 1
+      );
       for (let i = startDayIndex; i <= endDayIndex; i++) {
         if (!result[i]) result[i] = [];
         result[i].push({ ...occurrence, isStart: i === startDayIndex, isEnd: i === endDayIndex });
@@ -218,7 +268,7 @@ function windowsToDisplayedOccurrences(schedule?: RuleSnooze, displayedMonthYear
 
 export interface RuleScheduleCalendarProps {
   wkst?: IsoWeekday;
-  snoozeSchedule?: RuleSnooze;
+  snoozeSchedule?: RuleSnoozeSchedule[];
 }
 
 export const RuleScheduleCalendar: React.FC<RuleScheduleCalendarProps> = ({
@@ -337,7 +387,9 @@ export const RuleScheduleCalendar: React.FC<RuleScheduleCalendarProps> = ({
       <HeightWrapper>
         <CalendarGrid>
           {weekdayOrder.map((weekday) => (
-            <CalendarHeading>{moment().isoWeekday(weekday).format('ddd')}</CalendarHeading>
+            <CalendarHeading key={`weekday-heading-${weekday}`}>
+              {moment().isoWeekday(weekday).format('ddd')}
+            </CalendarHeading>
           ))}
           {calendarRows}
         </CalendarGrid>
@@ -358,24 +410,50 @@ const CalendarGrid = euiStyled.div`
   border-radius: 8px;
 `;
 
-const AllDayEventBadge = euiStyled(EuiBadge)`
+const AllDayEventBadge = euiStyled(EuiBadge)<{ $isStart: boolean; $isEnd: boolean }>`
   display: block;
   width: 100%;
   margin: 1px 0;
-  margin-inline-start: ${(props) => (props.isStart ? '8px' : 0)} !important;
-  margin-inline-end: ${(props) => (props.isEnd ? '8px' : 0)};
-  ${(props) => !props.isStart && !props.isEnd && `transform: scaleX(1.02);`}
-  ${(props) => props.isStart && props.isEnd && `transform: scaleX(0.96);`}
+  margin-inline-start: ${(props) => (props.$isStart ? '8px' : 0)} !important;
+  margin-inline-end: ${(props) => (props.$isEnd ? '8px' : 0)};
+  ${(props) => !props.$isStart && !props.$isEnd && `transform: scaleX(1.02);`}
+  ${(props) => props.$isStart && props.$isEnd && `transform: scaleX(0.96);`}
   z-index: 1;
   ${(props) =>
-    props.isStart &&
-    !props.isEnd &&
+    props.$isStart &&
+    !props.$isEnd &&
     `
   z-index: 2;
   & * {
     overflow: visible !important;
   }
 `}
+`;
+
+const TodayEventBadge = euiStyled(EuiBadge).attrs({ color: 'hollow', iconType: 'dot' })<{
+  $isStart: boolean;
+  $isEnd: boolean;
+  $color: string;
+}>`
+  display: block;
+  width: 100%;
+  margin: 1px 0;
+  margin-inline-start: ${(props) => (props.$isStart ? '8px' : 0)} !important;
+  margin-inline-end: ${(props) => (props.$isEnd ? '8px' : 0)};
+  border: none;
+  & .euiIcon {
+    font-weight: bold;
+    color: ${({ $color }) => {
+      switch ($color) {
+        case 'primary':
+          return euiThemeVars.euiColorPrimary;
+        case 'accent':
+          return euiThemeVars.euiColorAccent;
+        default:
+          return $color;
+      }
+    }};
+  }
 `;
 
 const CalendarDay = euiStyled(EuiFlexItem)`
