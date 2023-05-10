@@ -256,6 +256,7 @@ const RuleSnoozeSchedulerPanel: React.FunctionComponent<PanelOpts> = ({
         : {
             count: 1,
           };
+
     onSaveSchedule({
       id: initialSchedule?.id ?? uuidv4(),
       rRule: {

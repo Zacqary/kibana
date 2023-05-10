@@ -18,12 +18,16 @@ import {
   EuiSpacer,
   EuiButton,
   EuiToolTip,
+  EuiWrappingPopover,
+  EuiPopoverTitle,
+  EuiIcon,
 } from '@elastic/eui';
 import { euiStyled } from '@kbn/kibana-react-plugin/common';
 import { IsoWeekday, RuleSnoozeSchedule } from '@kbn/alerting-plugin/common';
 import { useFindMaintenanceWindows } from '@kbn/alerting-plugin/public';
 import { euiThemeVars } from '@kbn/ui-theme';
 import { ISO_WEEKDAYS } from '../../../../common/constants';
+import { scheduleSummary } from '../../rules_list/components/rule_snooze/panel/helpers';
 
 type EventWindow = RuleSnoozeSchedule & {
   title?: string;
@@ -37,6 +41,8 @@ interface DisplayedOccurrence {
   allDay: boolean;
   isStart: boolean;
   isEnd: boolean;
+  tzid: string;
+  recurrenceSummary?: string;
 }
 
 interface CalendarRowProps {
@@ -51,6 +57,20 @@ interface CalendarRowProps {
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 const CalendarRow = ({ days }: CalendarRowProps) => {
+  const [openPopover, setOpenPopover] = useState(null);
+  const popoverAnchors = useRef<Record<string, React.Ref<HTMLElement>>>({});
+
+  useLayoutEffect(() => {
+    for (const { snoozes, maintenanceWindows } of days) {
+      snoozes?.forEach((s) => {
+        if (!popoverAnchors.current[s.id]) popoverAnchors.current[s.id] = React.createRef();
+      });
+      maintenanceWindows?.forEach((w) => {
+        if (!popoverAnchors.current[w.id]) popoverAnchors.current[w.id] = React.createRef();
+      });
+    }
+  }, [days]);
+
   const allDayEventLengthMap = days.reduce(
     (
       result: Record<string, { length: number; days: number[] }>,
@@ -133,29 +153,51 @@ const CalendarRow = ({ days }: CalendarRowProps) => {
               !e ? (
                 <AllDayEventSpacer key={`spacer-${i}-${idx}`} />
               ) : (
-                <AllDayEventBadge
-                  key={e.id}
-                  color={e.color}
-                  $isStart={e.isStart || i === 0}
-                  $isEnd={e.isEnd || i === days.length - 1}
-                >
-                  {e.isStart || i === 0 ? e.title : ' '}
-                </AllDayEventBadge>
+                <React.Fragment key={e.id}>
+                  <AllDayEventBadge
+                    color={e.color}
+                    $isStart={e.isStart || i === 0}
+                    $isEnd={e.isEnd || i === days.length - 1}
+                    onClick={() => setOpenPopover(openPopover === e.id ? null : e.id)}
+                  >
+                    <span ref={e.isStart || i === 0 ? popoverAnchors.current[e.id] : null}>
+                      {e.isStart || i === 0 ? e.title : ' '}
+                    </span>
+                  </AllDayEventBadge>
+                  {(e.isStart || i === 0) && (
+                    <EventPopover
+                      event={e}
+                      anchor={popoverAnchors.current[e.id]}
+                      isOpen={openPopover === e.id}
+                      onClose={() => setOpenPopover(null)}
+                    />
+                  )}
+                </React.Fragment>
               )
             )}
             {todayEvents.map((e, idx) => (
-              <TodayEventBadge
-                key={e.id}
-                $color={e.color}
-                $isStart={e.isStart || i === 0}
-                $isEnd={e.isEnd || i === days.length - 1}
-              >
-                {e.title}{' '}
-                <EuiText size="xs" color="subdued">
-                  {moment(e.start).format(`h${moment(e.start).minute() > 0 ? ':mm' : ''}a`)}-
-                  {moment(e.end).format(`h${moment(e.end).minute() > 0 ? ':mm' : ''}a`)}
-                </EuiText>
-              </TodayEventBadge>
+              <React.Fragment key={e.id}>
+                <TodayEventBadge
+                  $color={e.color}
+                  $isStart={i === 0}
+                  $isEnd={i === days.length - 1}
+                  onClick={() => setOpenPopover(openPopover === e.id ? null : e.id)}
+                >
+                  <span ref={popoverAnchors.current[e.id]}>
+                    {e.title}{' '}
+                    <EuiText size="xs" color="subdued">
+                      {moment(e.start).format(`h${moment(e.start).minute() > 0 ? ':mm' : ''}a`)}-
+                      {moment(e.end).format(`h${moment(e.end).minute() > 0 ? ':mm' : ''}a`)}
+                    </EuiText>
+                  </span>
+                </TodayEventBadge>
+                <EventPopover
+                  event={e}
+                  anchor={popoverAnchors.current[e.id]}
+                  isOpen={openPopover === e.id}
+                  onClose={() => setOpenPopover(null)}
+                />
+              </React.Fragment>
             ))}
           </CalendarDay>
         );
@@ -225,9 +267,20 @@ function windowsToDisplayedOccurrences(
           const start = moment(occurrence).toISOString();
           const end = moment(occurrence).add(duration, 'ms').toISOString();
           const title = snooze.title ?? 'Snooze';
+          const snoozeId = id ?? `relative-${i}`;
+          if (duration < ONE_DAY_MS) console.log('START STRING', start);
+          const recurrenceSummary = scheduleSummary({ ...snooze, id: snoozeId });
           return [
             ...result,
-            { start, end, id: id ?? `relative-${i}`, title, allDay: duration >= ONE_DAY_MS },
+            {
+              start,
+              end,
+              id: snoozeId,
+              title,
+              allDay: duration >= ONE_DAY_MS,
+              recurrenceSummary,
+              tzid: snooze.rRule.tzid,
+            },
           ];
         },
         []
@@ -416,6 +469,8 @@ const AllDayEventBadge = euiStyled(EuiBadge)<{ $isStart: boolean; $isEnd: boolea
   margin: 1px 0;
   margin-inline-start: ${(props) => (props.$isStart ? '8px' : 0)} !important;
   margin-inline-end: ${(props) => (props.$isEnd ? '8px' : 0)};
+  cursor: pointer;
+  height: 20px !important;
   ${(props) => !props.$isStart && !props.$isEnd && `transform: scaleX(1.02);`}
   ${(props) => props.$isStart && props.$isEnd && `transform: scaleX(0.96);`}
   z-index: 1;
@@ -490,6 +545,42 @@ const CalendarHeading = euiStyled(EuiFlexItem).attrs({ grow: false })`
 const AllDayEventSpacer = euiStyled(EuiSpacer)`
   block-size: 22px;
 `;
+
+const EventPopover: React.FC<{
+  event: DisplayedOccurrence;
+  anchor: { current: HTMLElement | null } | null;
+  isOpen: boolean;
+  onClose: () => void;
+}> = ({ event, anchor, isOpen, onClose }) => {
+  const timeText = useMemo(() => {
+    const start = moment(event.start).tz(event.tzid);
+    const end = moment(event.end).tz(event.tzid);
+    if (event.allDay && start.date() !== end.date()) {
+      return `${start.format('MMM D')} - ${end.format('MMM D')} • ${start.format(
+        'h:mma'
+      )} - ${end.format('h:mma')}`;
+    }
+    return `${start.format('dddd, MMM D')} • ${start.format('h:mma')} - ${end.format('h:mma')}`;
+  }, [event]);
+
+  if (!anchor?.current) return null;
+  return (
+    <EuiWrappingPopover
+      anchorPosition="leftCenter"
+      button={anchor.current}
+      isOpen={isOpen}
+      closePopover={onClose}
+    >
+      <EuiPopoverTitle>{event.title}</EuiPopoverTitle>
+      <EuiText size="s">{timeText}</EuiText>
+      <EuiText size="s">
+        <EuiIcon type="globe" />
+        {event.tzid}
+      </EuiText>
+      {event.recurrenceSummary && <EuiText size="s">{event.recurrenceSummary}</EuiText>}
+    </EuiWrappingPopover>
+  );
+};
 
 // eslint-disable-next-line import/no-default-export
 export { RuleScheduleCalendar as default };
