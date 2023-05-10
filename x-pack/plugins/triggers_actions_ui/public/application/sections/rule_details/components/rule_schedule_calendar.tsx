@@ -6,8 +6,9 @@
  */
 
 import moment from 'moment';
+import { generatePath } from 'react-router-dom';
 import { RRule, Weekday } from '@kbn/rrule';
-import React, { useCallback, useState, useMemo, useLayoutEffect, useRef } from 'react';
+import React, { useCallback, useContext, useState, useMemo, useLayoutEffect, useRef } from 'react';
 import {
   EuiFlexItem,
   EuiText,
@@ -21,11 +22,22 @@ import {
   EuiWrappingPopover,
   EuiPopoverTitle,
   EuiIcon,
+  EuiPopoverFooter,
 } from '@elastic/eui';
 import { euiStyled } from '@kbn/kibana-react-plugin/common';
+import { useUiSetting } from '@kbn/kibana-react-plugin/public';
 import { IsoWeekday, RuleSnoozeSchedule } from '@kbn/alerting-plugin/common';
 import { useFindMaintenanceWindows } from '@kbn/alerting-plugin/public';
 import { euiThemeVars } from '@kbn/ui-theme';
+import {
+  SNOOZE_SUCCESS_MESSAGE,
+  UNSNOOZE_SUCCESS_MESSAGE,
+  SNOOZE_FAILED_MESSAGE,
+} from '../../rules_list/components/notify_badge/translations';
+import { useKibana } from '../../../../common/lib/kibana';
+import { unsnoozeRule } from '../../../lib/rule_api/unsnooze';
+import { snoozeRule } from '../../../lib/rule_api/snooze';
+import { RuleSnoozeScheduler } from '../../rules_list/components/rule_snooze/scheduler';
 import { ISO_WEEKDAYS } from '../../../../common/constants';
 import { scheduleSummary } from '../../rules_list/components/rule_snooze/panel/helpers';
 
@@ -43,6 +55,8 @@ interface DisplayedOccurrence {
   isEnd: boolean;
   tzid: string;
   recurrenceSummary?: string;
+  type: 'scheduledSnooze' | 'relativeSnooze' | 'maintenanceWindow';
+  eventObject: EventWindow;
 }
 
 interface CalendarRowProps {
@@ -55,6 +69,12 @@ interface CalendarRowProps {
 }
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+
+const useDefaultTimzezone = () => {
+  const kibanaTz: string = useUiSetting('dateFormat:tz');
+  if (!kibanaTz || kibanaTz === 'Browser') return moment.tz?.guess() ?? 'UTC';
+  return kibanaTz;
+};
 
 const CalendarRow = ({ days }: CalendarRowProps) => {
   const [openPopover, setOpenPopover] = useState(null);
@@ -147,7 +167,9 @@ const CalendarRow = ({ days }: CalendarRowProps) => {
             {isToday ? (
               <EuiBadge color="primary">{heading}</EuiBadge>
             ) : (
-              <EuiText size="xs">{heading}</EuiText>
+              <EuiBadge color="hollow" style={{ border: 'none' }}>
+                {heading}
+              </EuiBadge>
             )}
             {allDayEvents.map((e, idx) =>
               !e ? (
@@ -241,15 +263,16 @@ const HeightWrapper: React.FC<{ padding?: number; minHeight?: number }> = ({
 function windowsToDisplayedOccurrences(
   schedule: EventWindow[] | undefined,
   displayedMonthYear: number[],
-  weekRows: number[][]
+  weekRows: number[][],
+  type?: string
 ) {
   if (!schedule) return [];
   const [month, year] = displayedMonthYear;
   const firstDisplayedDay = weekRows[0][0];
   const lastDisplayedDay = weekRows[weekRows.length - 1][6];
   const occurrences = schedule
-    .map((snooze, i) => {
-      const { rRule, duration, skipRecurrences, id } = snooze;
+    .map((event, i) => {
+      const { rRule, duration, skipRecurrences, id } = event;
       const recurrenceRule = new RRule({
         ...rRule,
         dtstart: new Date(rRule.dtstart),
@@ -257,29 +280,30 @@ function windowsToDisplayedOccurrences(
         byweekday: rRule.byweekday ?? null,
         wkst: rRule.wkst ? Weekday[rRule.wkst] : null,
       });
-      const occurrences = recurrenceRule.between(
+      const recurrences = recurrenceRule.between(
         moment().month(month).year(year).date(firstDisplayedDay).toDate(),
         moment().month(month).year(year).date(lastDisplayedDay).toDate()
       );
-      return occurrences.reduce(
+      return recurrences.reduce(
         (result: Array<{ start: string; end: string; title: string; id?: string }>, occurrence) => {
           if (skipRecurrences?.includes(occurrence.toISOString())) return result;
           const start = moment(occurrence).toISOString();
           const end = moment(occurrence).add(duration, 'ms').toISOString();
-          const title = snooze.title ?? 'Snooze';
-          const snoozeId = id ?? `relative-${i}`;
-          if (duration < ONE_DAY_MS) console.log('START STRING', start);
-          const recurrenceSummary = scheduleSummary({ ...snooze, id: snoozeId });
+          const title = event.title ?? 'Snooze';
+          const eventId = id ?? `relative-${i}`;
+          const recurrenceSummary = scheduleSummary({ ...event, id: eventId });
           return [
             ...result,
             {
               start,
               end,
-              id: snoozeId,
+              id: eventId,
               title,
               allDay: duration >= ONE_DAY_MS,
               recurrenceSummary,
-              tzid: snooze.rRule.tzid,
+              tzid: event.rRule.tzid,
+              type: type ?? (id ? 'scheduledSnooze' : 'relativeSnooze'),
+              eventObject: event,
             },
           ];
         },
@@ -322,11 +346,20 @@ function windowsToDisplayedOccurrences(
 export interface RuleScheduleCalendarProps {
   wkst?: IsoWeekday;
   snoozeSchedule?: RuleSnoozeSchedule[];
+  ruleId: string;
+  requestRefresh: () => void;
 }
+
+const RuleContext = React.createContext({
+  ruleId: '',
+  requestRefresh: () => {},
+});
 
 export const RuleScheduleCalendar: React.FC<RuleScheduleCalendarProps> = ({
   wkst = 7,
   snoozeSchedule,
+  ruleId,
+  requestRefresh,
 }) => {
   const today = useRef(moment());
   const [displayedMonthYear, setDisplayedMonthYear] = useState([
@@ -365,7 +398,12 @@ export const RuleScheduleCalendar: React.FC<RuleScheduleCalendarProps> = ({
     [snoozeSchedule, weekRows, displayedMonthYear]
   );
   const displayedMaintenanceRecurrences = useMemo(() => {
-    return windowsToDisplayedOccurrences(maintenanceWindows, displayedMonthYear, weekRows);
+    return windowsToDisplayedOccurrences(
+      maintenanceWindows,
+      displayedMonthYear,
+      weekRows,
+      'maintenanceWindow'
+    );
   }, [maintenanceWindows, weekRows, displayedMonthYear]);
 
   const calendarRows = useMemo(
@@ -415,39 +453,41 @@ export const RuleScheduleCalendar: React.FC<RuleScheduleCalendarProps> = ({
   }, [today]);
 
   return (
-    <EuiPanel hasBorder={false} hasShadow={false}>
-      <EuiFlexGroup alignItems="center" justifyContent="flexStart" gutterSize="m">
-        <EuiFlexItem grow={false}>
-          <EuiToolTip position="bottom" content={today.current.format('dddd MMMM D')}>
-            <EuiButton size="s" color="text" onClick={onClickToday}>
-              Today
-            </EuiButton>
-          </EuiToolTip>
-        </EuiFlexItem>
-        <EuiFlexItem grow={false}>
-          <EuiButtonIcon iconType="arrowLeft" onClick={onClickMonthBack} />
-        </EuiFlexItem>
-        <EuiFlexItem grow={false}>
-          <EuiButtonIcon iconType="arrowRight" onClick={onClickMonthForward} />
-        </EuiFlexItem>
-        <EuiFlexItem grow={false}>
-          <EuiText>
-            <h3>{monthYearHeading}</h3>
-          </EuiText>
-        </EuiFlexItem>
-      </EuiFlexGroup>
-      <EuiSpacer size="s" />
-      <HeightWrapper>
-        <CalendarGrid>
-          {weekdayOrder.map((weekday) => (
-            <CalendarHeading key={`weekday-heading-${weekday}`}>
-              {moment().isoWeekday(weekday).format('ddd')}
-            </CalendarHeading>
-          ))}
-          {calendarRows}
-        </CalendarGrid>
-      </HeightWrapper>
-    </EuiPanel>
+    <RuleContext.Provider value={{ ruleId, requestRefresh }}>
+      <EuiPanel hasBorder={false} hasShadow={false}>
+        <EuiFlexGroup alignItems="center" justifyContent="flexStart" gutterSize="m">
+          <EuiFlexItem grow={false}>
+            <EuiToolTip position="bottom" content={today.current.format('dddd MMMM D')}>
+              <EuiButton size="s" color="text" onClick={onClickToday}>
+                Today
+              </EuiButton>
+            </EuiToolTip>
+          </EuiFlexItem>
+          <EuiFlexItem grow={false}>
+            <EuiButtonIcon iconType="arrowLeft" onClick={onClickMonthBack} />
+          </EuiFlexItem>
+          <EuiFlexItem grow={false}>
+            <EuiButtonIcon iconType="arrowRight" onClick={onClickMonthForward} />
+          </EuiFlexItem>
+          <EuiFlexItem grow={false}>
+            <EuiText>
+              <h3>{monthYearHeading}</h3>
+            </EuiText>
+          </EuiFlexItem>
+        </EuiFlexGroup>
+        <EuiSpacer size="s" />
+        <HeightWrapper>
+          <CalendarGrid>
+            {weekdayOrder.map((weekday) => (
+              <CalendarHeading key={`weekday-heading-${weekday}`}>
+                {moment().isoWeekday(weekday).format('ddd')}
+              </CalendarHeading>
+            ))}
+            {calendarRows}
+          </CalendarGrid>
+        </HeightWrapper>
+      </EuiPanel>
+    </RuleContext.Provider>
   );
 };
 
@@ -552,18 +592,140 @@ const EventPopover: React.FC<{
   isOpen: boolean;
   onClose: () => void;
 }> = ({ event, anchor, isOpen, onClose }) => {
-  const timeText = useMemo(() => {
+  const {
+    http,
+    notifications: { toasts },
+    application: { navigateToApp, getUrlForApp },
+  } = useKibana().services;
+  const [isSchedulerOpen, setIsSchedulerOpen] = useState(false);
+
+  const { ruleId, requestRefresh } = useContext(RuleContext);
+
+  const [isLoading, setIsLoading] = useState(false);
+  const saveSnoozeSchedule = useCallback(
+    async (schedule: RuleSnoozeSchedule) => {
+      setIsLoading(true);
+      try {
+        await snoozeRule({ http, snoozeSchedule: schedule, id: ruleId });
+        onClose();
+        requestRefresh();
+        toasts.addSuccess(SNOOZE_SUCCESS_MESSAGE);
+      } catch (e) {
+        toasts.addDanger(SNOOZE_FAILED_MESSAGE);
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [setIsLoading, http, ruleId, toasts, onClose, requestRefresh]
+  );
+
+  const cancelSnoozeSchedules = useCallback(
+    async (scheduleIds: string[]) => {
+      setIsLoading(true);
+      try {
+        await unsnoozeRule({ http, scheduleIds, id: ruleId });
+        onClose();
+        requestRefresh();
+        toasts.addSuccess(UNSNOOZE_SUCCESS_MESSAGE);
+      } catch (e) {
+        toasts.addDanger(SNOOZE_FAILED_MESSAGE);
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [setIsLoading, http, ruleId, toasts, onClose, requestRefresh]
+  );
+
+  const cancelRelativeSnooze = useCallback(async () => {
+    setIsLoading(true);
+    onClose();
+    try {
+      await unsnoozeRule({ http, id: ruleId });
+      requestRefresh();
+      toasts.addSuccess(UNSNOOZE_SUCCESS_MESSAGE);
+    } catch (e) {
+      toasts.addDanger(SNOOZE_FAILED_MESSAGE);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [setIsLoading, http, ruleId, toasts, onClose, requestRefresh]);
+
+  const dateText = useMemo(() => {
     const start = moment(event.start).tz(event.tzid);
     const end = moment(event.end).tz(event.tzid);
     if (event.allDay && start.date() !== end.date()) {
-      return `${start.format('MMM D')} - ${end.format('MMM D')} • ${start.format(
-        'h:mma'
-      )} - ${end.format('h:mma')}`;
+      return `${start.format('MMM D')} - ${end.format('MMM D')}`;
     }
-    return `${start.format('dddd, MMM D')} • ${start.format('h:mma')} - ${end.format('h:mma')}`;
+    return `${start.format('dddd, MMM D')}`;
+  }, [event]);
+  const timeText = useMemo(() => {
+    const start = moment(event.start).tz(event.tzid);
+    const end = moment(event.end).tz(event.tzid);
+    return `${start.format('h:mma')} - ${end.format('h:mma')}`;
   }, [event]);
 
+  const defaultTz = useDefaultTimzezone();
+
   if (!anchor?.current) return null;
+  const body =
+    event.type === 'scheduledSnooze' && isSchedulerOpen ? (
+      <RuleSnoozeScheduler
+        isLoading={isLoading}
+        initialSchedule={event.eventObject}
+        onClose={() => setIsSchedulerOpen(false)}
+        onSaveSchedule={saveSnoozeSchedule}
+        onCancelSchedules={cancelSnoozeSchedules}
+        hasTitle
+        inPopover
+      />
+    ) : (
+      <>
+        <EuiPopoverTitle>{event.title}</EuiPopoverTitle>
+        <EuiText size="s">
+          <EuiIcon type="calendar" /> {dateText}
+        </EuiText>
+        <EuiText size="s">
+          <EuiIcon type="clock" /> {timeText}
+        </EuiText>
+        {event.tzid !== defaultTz && (
+          <EuiText size="s">
+            <EuiIcon type="globe" /> {event.tzid}
+          </EuiText>
+        )}
+        {event.recurrenceSummary && (
+          <EuiText size="s">
+            <EuiIcon type="refresh" /> {event.recurrenceSummary}
+          </EuiText>
+        )}
+        <EuiPopoverFooter>
+          {event.type === 'relativeSnooze' ? (
+            <EuiButton onClick={cancelRelativeSnooze} fullWidth size="s" color="danger">
+              Cancel snooze
+            </EuiButton>
+          ) : (
+            <EuiButton
+              fullWidth
+              size="s"
+              onClick={
+                event.type === 'scheduledSnooze'
+                  ? () => setIsSchedulerOpen(true)
+                  : event.type === 'maintenanceWindow'
+                  ? () =>
+                      navigateToApp(APP_ID, {
+                        path: generatePath(paths.alerting.maintenanceWindowsEdit, {
+                          maintenanceWindowId: event.id,
+                        }),
+                        deepLinkId: MAINTENANCE_WINDOWS_APP_ID,
+                      })
+                  : () => {}
+              }
+            >
+              Edit schedule
+            </EuiButton>
+          )}
+        </EuiPopoverFooter>
+      </>
+    );
   return (
     <EuiWrappingPopover
       anchorPosition="leftCenter"
@@ -571,15 +733,20 @@ const EventPopover: React.FC<{
       isOpen={isOpen}
       closePopover={onClose}
     >
-      <EuiPopoverTitle>{event.title}</EuiPopoverTitle>
-      <EuiText size="s">{timeText}</EuiText>
-      <EuiText size="s">
-        <EuiIcon type="globe" />
-        {event.tzid}
-      </EuiText>
-      {event.recurrenceSummary && <EuiText size="s">{event.recurrenceSummary}</EuiText>}
+      {body}
     </EuiWrappingPopover>
   );
+};
+
+const MAINTENANCE_WINDOWS_APP_ID = 'maintenanceWindows';
+const APP_ID = 'management';
+
+const paths = {
+  alerting: {
+    maintenanceWindows: `/${MAINTENANCE_WINDOWS_APP_ID}`,
+    maintenanceWindowsCreate: '/create',
+    maintenanceWindowsEdit: '/edit/:maintenanceWindowId',
+  },
 };
 
 // eslint-disable-next-line import/no-default-export

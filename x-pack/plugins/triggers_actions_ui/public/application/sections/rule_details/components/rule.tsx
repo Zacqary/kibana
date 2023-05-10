@@ -145,6 +145,8 @@ export function RuleComponent({
         'xl'
       )({
         snoozeSchedule: rule.snoozeSchedule,
+        ruleId: rule.id,
+        requestRefresh,
       }),
     },
   ];
