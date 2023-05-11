@@ -41,6 +41,7 @@ interface PanelOpts {
   bulkSnoozeSchedule?: boolean;
   showDelete?: boolean;
   inPopover?: boolean;
+  initialStartDT?: moment.Moment;
 }
 
 export interface ComponentOpts extends PanelOpts {
@@ -101,6 +102,7 @@ const RuleSnoozeSchedulerPanel: React.FunctionComponent<PanelOpts> = ({
   bulkSnoozeSchedule = false,
   showDelete = false,
   inPopover = false,
+  initialStartDT,
 }) => {
   // These two states form a state machine for whether or not the user's clicks on the datepicker apply to the start/end date or start/end time
   // - State A: After the user clicks a start date:
@@ -129,8 +131,8 @@ const RuleSnoozeSchedulerPanel: React.FunctionComponent<PanelOpts> = ({
   const initialState = useMemo(() => {
     if (!initialSchedule) {
       return {
-        startDT: moment().add('24', 'h'),
-        endDT: moment().add('48', 'h'),
+        startDT: initialStartDT ?? moment().add('24', 'h'),
+        endDT: initialStartDT ? moment(initialStartDT).add('24', 'h') : moment().add('48', 'h'),
         isRecurring: false,
         recurrenceSchedule: null,
         selectedTimezone: [{ label: defaultTz }],
@@ -165,7 +167,7 @@ const RuleSnoozeSchedulerPanel: React.FunctionComponent<PanelOpts> = ({
       recurrenceSchedule,
       selectedTimezone: [{ label: initialSchedule.rRule.tzid }],
     };
-  }, [initialSchedule, defaultTz]);
+  }, [initialSchedule, defaultTz, initialStartDT]);
 
   const [startDT, setStartDT] = useState<Moment | null>(initialState.startDT);
   const [endDT, setEndDT] = useState<Moment | null>(initialState.endDT);
