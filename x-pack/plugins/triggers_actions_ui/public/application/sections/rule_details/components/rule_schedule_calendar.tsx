@@ -19,6 +19,7 @@ import {
   EuiSpacer,
   EuiButton,
   EuiToolTip,
+  EuiPopover,
   EuiWrappingPopover,
   EuiPopoverTitle,
   EuiIcon,
@@ -65,6 +66,7 @@ interface CalendarRowProps {
     isToday?: boolean;
     snoozes?: DisplayedOccurrence[];
     maintenanceWindows?: DisplayedOccurrence[];
+    date: moment.Moment;
   }>;
 }
 
@@ -81,13 +83,15 @@ const CalendarRow = ({ days }: CalendarRowProps) => {
   const popoverAnchors = useRef<Record<string, React.Ref<HTMLElement>>>({});
 
   useLayoutEffect(() => {
-    for (const { snoozes, maintenanceWindows } of days) {
+    for (const { snoozes, maintenanceWindows, heading } of days) {
       snoozes?.forEach((s) => {
         if (!popoverAnchors.current[s.id]) popoverAnchors.current[s.id] = React.createRef();
       });
       maintenanceWindows?.forEach((w) => {
         if (!popoverAnchors.current[w.id]) popoverAnchors.current[w.id] = React.createRef();
       });
+      if (!popoverAnchors.current[`calendar-day-${heading}`])
+        popoverAnchors.current[`calendar-day-${heading}`] = React.createRef();
     }
   }, [days]);
 
@@ -137,7 +141,7 @@ const CalendarRow = ({ days }: CalendarRowProps) => {
 
   return (
     <>
-      {days.map(({ heading, isToday, snoozes, maintenanceWindows }, i) => {
+      {days.map(({ heading, isToday, snoozes, maintenanceWindows, date }, i) => {
         const allDaySnoozes = snoozes?.filter((s) => s.allDay) ?? [];
         const allDayMaintenanceWindows = maintenanceWindows?.filter((w) => w.allDay) ?? [];
         const allDayEventBadges = [
@@ -162,66 +166,85 @@ const CalendarRow = ({ days }: CalendarRowProps) => {
         ].sort((a, b) => moment(a.start).diff(b.start, 'ms'));
 
         return (
-          <CalendarDay key={`calendar-day-${heading}`}>
-            <EuiSpacer size="xs" />
-            {isToday ? (
-              <EuiBadge color="primary">{heading}</EuiBadge>
-            ) : (
-              <EuiBadge color="hollow" style={{ border: 'none' }}>
-                {heading}
-              </EuiBadge>
-            )}
-            {allDayEvents.map((e, idx) =>
-              !e ? (
-                <AllDayEventSpacer key={`spacer-${i}-${idx}`} />
+          <>
+            <CalendarDay
+              key={`calendar-day-${heading}`}
+              id={`calendar-day-${heading}`}
+              onClick={(clickEvent: { target: { id?: string } }) => {
+                if (clickEvent.target.id === `calendar-day-${heading}`) {
+                  setOpenPopover(`calendar-day-${heading}`);
+                }
+              }}
+            >
+              <EuiSpacer size="xs" />
+              {isToday ? (
+                <EuiBadge color="primary">{heading}</EuiBadge>
               ) : (
+                <EuiBadge color="hollow" style={{ border: 'none' }}>
+                  {heading}
+                </EuiBadge>
+              )}
+              {allDayEvents.map((e, idx) =>
+                !e ? (
+                  <AllDayEventSpacer key={`spacer-${i}-${idx}`} />
+                ) : (
+                  <React.Fragment key={e.id}>
+                    <AllDayEventBadge
+                      color={e.color}
+                      $isStart={e.isStart || i === 0}
+                      $isEnd={e.isEnd || i === days.length - 1}
+                      onClick={() => setOpenPopover(openPopover === e.id ? null : e.id)}
+                    >
+                      <span ref={e.isStart || i === 0 ? popoverAnchors.current[e.id] : null}>
+                        {e.isStart || i === 0 ? e.title : ' '}
+                      </span>
+                    </AllDayEventBadge>
+                    {(e.isStart || i === 0) && (
+                      <EventPopover
+                        event={e}
+                        anchor={popoverAnchors.current[e.id]}
+                        isOpen={openPopover === e.id}
+                        onClose={() => setOpenPopover(null)}
+                      />
+                    )}
+                  </React.Fragment>
+                )
+              )}
+              {todayEvents.map((e, idx) => (
                 <React.Fragment key={e.id}>
-                  <AllDayEventBadge
-                    color={e.color}
-                    $isStart={e.isStart || i === 0}
-                    $isEnd={e.isEnd || i === days.length - 1}
+                  <TodayEventBadge
+                    $color={e.color}
+                    $isStart={i === 0}
+                    $isEnd={i === days.length - 1}
                     onClick={() => setOpenPopover(openPopover === e.id ? null : e.id)}
                   >
-                    <span ref={e.isStart || i === 0 ? popoverAnchors.current[e.id] : null}>
-                      {e.isStart || i === 0 ? e.title : ' '}
+                    <span ref={popoverAnchors.current[e.id]}>
+                      {e.title}{' '}
+                      <EuiText size="xs" color="subdued">
+                        {moment(e.start).format(`h${moment(e.start).minute() > 0 ? ':mm' : ''}a`)}-
+                        {moment(e.end).format(`h${moment(e.end).minute() > 0 ? ':mm' : ''}a`)}
+                      </EuiText>
                     </span>
-                  </AllDayEventBadge>
-                  {(e.isStart || i === 0) && (
-                    <EventPopover
-                      event={e}
-                      anchor={popoverAnchors.current[e.id]}
-                      isOpen={openPopover === e.id}
-                      onClose={() => setOpenPopover(null)}
-                    />
-                  )}
+                  </TodayEventBadge>
+                  <EventPopover
+                    event={e}
+                    anchor={popoverAnchors.current[e.id]}
+                    isOpen={openPopover === e.id}
+                    onClose={() => setOpenPopover(null)}
+                  />
                 </React.Fragment>
-              )
-            )}
-            {todayEvents.map((e, idx) => (
-              <React.Fragment key={e.id}>
-                <TodayEventBadge
-                  $color={e.color}
-                  $isStart={i === 0}
-                  $isEnd={i === days.length - 1}
-                  onClick={() => setOpenPopover(openPopover === e.id ? null : e.id)}
-                >
-                  <span ref={popoverAnchors.current[e.id]}>
-                    {e.title}{' '}
-                    <EuiText size="xs" color="subdued">
-                      {moment(e.start).format(`h${moment(e.start).minute() > 0 ? ':mm' : ''}a`)}-
-                      {moment(e.end).format(`h${moment(e.end).minute() > 0 ? ':mm' : ''}a`)}
-                    </EuiText>
-                  </span>
-                </TodayEventBadge>
-                <EventPopover
-                  event={e}
-                  anchor={popoverAnchors.current[e.id]}
-                  isOpen={openPopover === e.id}
-                  onClose={() => setOpenPopover(null)}
-                />
-              </React.Fragment>
-            ))}
-          </CalendarDay>
+              ))}
+              <NewEventBadge isOpen={openPopover === `calendar-day-${heading}`}>
+                <span ref={popoverAnchors.current[`calendar-day-${heading}`]} />
+              </NewEventBadge>
+            </CalendarDay>
+            <AddSnoozePopover
+              anchor={popoverAnchors.current[`calendar-day-${heading}`]}
+              isOpen={openPopover === `calendar-day-${heading}`}
+              onClose={() => setOpenPopover(null)}
+              initialStartDT={date}
+            />
+          </>
         );
       })}
     </>
@@ -412,7 +435,7 @@ export const RuleScheduleCalendar: React.FC<RuleScheduleCalendarProps> = ({
         const [month, year] = displayedMonthYear;
 
         const days = week.map((d) => {
-          const dateMoment = moment().month(month).year(year).date(d);
+          const dateMoment = moment().month(month).year(year).date(d).hour(0).minute(0).second(0);
           const actualDateOfMonth = dateMoment.date();
           const heading =
             actualDateOfMonth === 1 ? `${dateMoment.format('MMM D')}` : String(actualDateOfMonth);
@@ -423,6 +446,7 @@ export const RuleScheduleCalendar: React.FC<RuleScheduleCalendarProps> = ({
               dateMoment.date() === today.current.date(),
             snoozes: displayedSnoozeRecurrences[d],
             maintenanceWindows: displayedMaintenanceRecurrences[d],
+            date: dateMoment,
           };
         });
 
@@ -586,19 +610,19 @@ const AllDayEventSpacer = euiStyled(EuiSpacer)`
   block-size: 22px;
 `;
 
-const EventPopover: React.FC<{
-  event: DisplayedOccurrence;
-  anchor: { current: HTMLElement | null } | null;
-  isOpen: boolean;
-  onClose: () => void;
-}> = ({ event, anchor, isOpen, onClose }) => {
+const NewEventBadge = euiStyled(AllDayEventBadge).attrs({ color: 'primary' })<{ isOpen: boolean }>`
+  ${(props) =>
+    !props.isOpen &&
+    `
+    visibility: hidden;
+  `}
+`;
+
+const useSnoozeSchedulerApi = (onClose: () => void) => {
   const {
     http,
     notifications: { toasts },
-    application: { navigateToApp, getUrlForApp },
   } = useKibana().services;
-  const [isSchedulerOpen, setIsSchedulerOpen] = useState(false);
-
   const { ruleId, requestRefresh } = useContext(RuleContext);
 
   const [isLoading, setIsLoading] = useState(false);
@@ -649,8 +673,52 @@ const EventPopover: React.FC<{
       setIsLoading(false);
     }
   }, [setIsLoading, http, ruleId, toasts, onClose, requestRefresh]);
+  return { isLoading, saveSnoozeSchedule, cancelSnoozeSchedules, cancelRelativeSnooze };
+};
+
+const AddSnoozePopover: React.FC<{
+  anchor: { current: HTMLElement | null } | null;
+  isOpen: boolean;
+  onClose: () => void;
+  initialStartDT: moment.Moment;
+}> = ({ anchor, isOpen, onClose, initialStartDT }) => {
+  const { isLoading, saveSnoozeSchedule, cancelSnoozeSchedules } = useSnoozeSchedulerApi(onClose);
+  if (!anchor?.current) return null;
+  return (
+    <EuiWrappingPopover
+      anchorPosition="leftCenter"
+      button={anchor.current}
+      isOpen={isOpen}
+      closePopover={onClose}
+    >
+      <RuleSnoozeScheduler
+        isLoading={isLoading}
+        initialStartDT={initialStartDT}
+        onClose={onClose}
+        onSaveSchedule={saveSnoozeSchedule}
+        onCancelSchedules={cancelSnoozeSchedules}
+        hasTitle
+        inPopover
+      />
+    </EuiWrappingPopover>
+  );
+};
+
+const EventPopover: React.FC<{
+  event: DisplayedOccurrence;
+  anchor: { current: HTMLElement | null } | null;
+  isOpen: boolean;
+  onClose: () => void;
+}> = ({ event, anchor, isOpen, onClose }) => {
+  const {
+    application: { navigateToApp },
+  } = useKibana().services;
+  const [isSchedulerOpen, setIsSchedulerOpen] = useState(false);
+  const { isLoading, saveSnoozeSchedule, cancelSnoozeSchedules, cancelRelativeSnooze } =
+    useSnoozeSchedulerApi(onClose);
 
   const dateText = useMemo(() => {
+    if (!event) return;
     const start = moment(event.start).tz(event.tzid);
     const end = moment(event.end).tz(event.tzid);
     if (event.allDay && start.date() !== end.date()) {
@@ -659,19 +727,19 @@ const EventPopover: React.FC<{
     return `${start.format('dddd, MMM D')}`;
   }, [event]);
   const timeText = useMemo(() => {
+    if (!event) return;
     const start = moment(event.start).tz(event.tzid);
     const end = moment(event.end).tz(event.tzid);
     return `${start.format('h:mma')} - ${end.format('h:mma')}`;
   }, [event]);
 
   const defaultTz = useDefaultTimzezone();
-
   if (!anchor?.current) return null;
   const body =
     event.type === 'scheduledSnooze' && isSchedulerOpen ? (
       <RuleSnoozeScheduler
         isLoading={isLoading}
-        initialSchedule={event.eventObject}
+        initialSchedule={event?.eventObject}
         onClose={() => setIsSchedulerOpen(false)}
         onSaveSchedule={saveSnoozeSchedule}
         onCancelSchedules={cancelSnoozeSchedules}
