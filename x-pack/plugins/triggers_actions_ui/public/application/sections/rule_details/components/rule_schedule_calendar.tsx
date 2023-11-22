@@ -8,6 +8,8 @@
 import moment from 'moment';
 import { generatePath } from 'react-router-dom';
 import { RRule, Weekday } from '@kbn/rrule';
+import styled from '@emotion/styled';
+import { css } from '@emotion/react';
 import React, { useCallback, useContext, useState, useMemo, useLayoutEffect, useRef } from 'react';
 import {
   EuiFlexItem,
@@ -24,10 +26,11 @@ import {
   EuiPopoverTitle,
   EuiIcon,
   EuiPopoverFooter,
+  EuiBadgeProps,
+  EuiFlexItemProps,
 } from '@elastic/eui';
-import { euiStyled } from '@kbn/kibana-react-plugin/common';
 import { useUiSetting } from '@kbn/kibana-react-plugin/public';
-import { IsoWeekday, RuleSnoozeSchedule } from '@kbn/alerting-plugin/common';
+import { IsoWeekday, RuleSnoozeSchedule, ISO_WEEKDAYS } from '@kbn/alerting-plugin/common';
 import { useFindMaintenanceWindows } from '@kbn/alerting-plugin/public';
 import { euiThemeVars } from '@kbn/ui-theme';
 import {
@@ -39,7 +42,6 @@ import { useKibana } from '../../../../common/lib/kibana';
 import { unsnoozeRule } from '../../../lib/rule_api/unsnooze';
 import { snoozeRule } from '../../../lib/rule_api/snooze';
 import { RuleSnoozeScheduler } from '../../rules_list/components/rule_snooze/scheduler';
-import { ISO_WEEKDAYS } from '../../../../common/constants';
 import { scheduleSummary } from '../../rules_list/components/rule_snooze/panel/helpers';
 
 type EventWindow = RuleSnoozeSchedule & {
@@ -79,7 +81,7 @@ const useDefaultTimzezone = () => {
 };
 
 const CalendarRow = ({ days }: CalendarRowProps) => {
-  const [openPopover, setOpenPopover] = useState(null);
+  const [openPopover, setOpenPopover] = useState<string | null>(null);
   const popoverAnchors = useRef<Record<string, React.Ref<HTMLElement>>>({});
 
   useLayoutEffect(() => {
@@ -516,7 +518,7 @@ export const RuleScheduleCalendar: React.FC<RuleScheduleCalendarProps> = ({
 };
 
 const SEVENTH = `${100 / 7}%`;
-const CalendarGrid = euiStyled.div`
+const CalendarGrid = styled.div`
   display: grid;
   grid-template-columns: ${SEVENTH} ${SEVENTH} ${SEVENTH} ${SEVENTH} ${SEVENTH} ${SEVENTH} ${SEVENTH};
   grid-template-rows: 24px auto;
@@ -527,55 +529,78 @@ const CalendarGrid = euiStyled.div`
   border-radius: 8px;
 `;
 
-const AllDayEventBadge = euiStyled(EuiBadge)<{ $isStart: boolean; $isEnd: boolean }>`
-  display: block;
-  width: 100%;
-  margin: 1px 0;
-  margin-inline-start: ${(props) => (props.$isStart ? '8px' : 0)} !important;
-  margin-inline-end: ${(props) => (props.$isEnd ? '8px' : 0)};
-  cursor: pointer;
-  height: 20px !important;
-  ${(props) => !props.$isStart && !props.$isEnd && `transform: scaleX(1.02);`}
-  ${(props) => props.$isStart && props.$isEnd && `transform: scaleX(0.96);`}
-  z-index: 1;
-  ${(props) =>
-    props.$isStart &&
-    !props.$isEnd &&
-    `
-  z-index: 2;
-  & * {
-    overflow: visible !important;
-  }
+const AllDayEventBadge: React.FC<{
+  $isStart: boolean;
+  $isEnd: boolean;
+  color: string;
+  onClick: () => void;
+}> = ({ $isStart, $isEnd, ...props }) => (
+  <EuiBadge
+    css={css`
+      display: block;
+      width: 100%;
+      margin: 1px 0;
+      margin-inline-start: ${$isStart ? '8px' : 0} !important;
+      margin-inline-end: ${$isEnd ? '8px' : 0};
+      cursor: pointer;
+      height: 20px !important;
+      ${!$isStart && !$isEnd && `transform: scaleX(1.02);`}
+      ${$isStart && $isEnd && `transform: scaleX(0.96);`}
+z-index: 1;
+      ${$isStart &&
+      !$isEnd &&
+      `
+z-index: 2;
+& * {
+  overflow: visible !important;
+}
 `}
-`;
+    `}
+    {...props}
+    onClickAriaLabel="aaa"
+    iconOnClick={props.onClick}
+    iconOnClickAriaLabel="aaa"
+  />
+);
 
-const TodayEventBadge = euiStyled(EuiBadge).attrs({ color: 'hollow', iconType: 'dot' })<{
+const TodayEventBadge: React.FC<{
   $isStart: boolean;
   $isEnd: boolean;
   $color: string;
-}>`
-  display: block;
-  width: 100%;
-  margin: 1px 0;
-  margin-inline-start: ${(props) => (props.$isStart ? '8px' : 0)} !important;
-  margin-inline-end: ${(props) => (props.$isEnd ? '8px' : 0)};
-  border: none;
-  & .euiIcon {
-    font-weight: bold;
-    color: ${({ $color }) => {
-      switch ($color) {
-        case 'primary':
-          return euiThemeVars.euiColorPrimary;
-        case 'accent':
-          return euiThemeVars.euiColorAccent;
-        default:
-          return $color;
+  onClick: () => void;
+}> = ({ $isStart, $isEnd, $color, ...props }) => (
+  <EuiBadge
+    color="hollow"
+    iconType="dot"
+    css={css`
+      display: block;
+      width: 100%;
+      margin: 1px 0;
+      margin-inline-start: ${$isStart ? '8px' : 0} !important;
+      margin-inline-end: ${$isEnd ? '8px' : 0};
+      border: none;
+      & .euiIcon {
+        font-weight: bold;
+        color: ${(() => {
+          switch ($color) {
+            case 'primary':
+              return euiThemeVars.euiColorPrimary;
+            case 'accent':
+              return euiThemeVars.euiColorAccent;
+            default:
+              return $color;
+          }
+        })()};
       }
-    }};
-  }
-`;
+    `}
+    {...props}
+    onClickAriaLabel="aaa"
+    iconOnClick={props.onClick}
+    iconOnClickAriaLabel="aaa"
+  />
+);
 
-const CalendarDay = euiStyled(EuiFlexItem)`
+const CalendarDay = styled(EuiFlexItem)`
   align-items: center;
   border-right: 1px solid ${euiThemeVars.euiColorLightShade};
   border-bottom: 1px solid ${euiThemeVars.euiColorLightShade};
@@ -588,7 +613,9 @@ const CalendarDay = euiStyled(EuiFlexItem)`
   }
 `;
 
-const CalendarHeading = euiStyled(EuiFlexItem).attrs({ grow: false })`
+const CalendarHeading = styled((props: EuiFlexItemProps) => (
+  <EuiFlexItem grow={false} {...props} />
+))`
   background-color: ${euiThemeVars.euiColorLightestShade};
   border-bottom: 1px solid ${euiThemeVars.euiColorLightShade};
   justify-content: center;
@@ -606,11 +633,13 @@ const CalendarHeading = euiStyled(EuiFlexItem).attrs({ grow: false })`
   color: ${euiThemeVars.euiTextSubduedColor};
 `;
 
-const AllDayEventSpacer = euiStyled(EuiSpacer)`
+const AllDayEventSpacer = styled(EuiSpacer)`
   block-size: 22px;
 `;
 
-const NewEventBadge = euiStyled(AllDayEventBadge).attrs({ color: 'primary' })<{ isOpen: boolean }>`
+const NewEventBadge = styled((props: EuiBadgeProps) => (
+  <AllDayEventBadge color="primary" {...props} />
+))<{ isOpen: boolean }>`
   ${(props) =>
     !props.isOpen &&
     `
@@ -677,7 +706,7 @@ const useSnoozeSchedulerApi = (onClose: () => void) => {
 };
 
 const AddSnoozePopover: React.FC<{
-  anchor: { current: HTMLElement | null } | null;
+  anchor: React.Ref<HTMLElement> | null;
   isOpen: boolean;
   onClose: () => void;
   initialStartDT: moment.Moment;
@@ -706,7 +735,7 @@ const AddSnoozePopover: React.FC<{
 
 const EventPopover: React.FC<{
   event: DisplayedOccurrence;
-  anchor: { current: HTMLElement | null } | null;
+  anchor: React.Ref<HTMLElement> | null;
   isOpen: boolean;
   onClose: () => void;
 }> = ({ event, anchor, isOpen, onClose }) => {
