@@ -36,7 +36,7 @@ import './scheduler.scss';
 interface PanelOpts {
   onSaveSchedule: (sched: SnoozeSchedule) => void;
   onCancelSchedules: (ids: string[]) => void;
-  initialSchedule: SnoozeSchedule | null;
+  initialSchedule?: SnoozeSchedule | null;
   isLoading: boolean;
   bulkSnoozeSchedule?: boolean;
   showDelete?: boolean;

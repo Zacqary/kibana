@@ -21,7 +21,6 @@ import {
   EuiSpacer,
   EuiButton,
   EuiToolTip,
-  EuiPopover,
   EuiWrappingPopover,
   EuiPopoverTitle,
   EuiIcon,
@@ -33,6 +32,7 @@ import { useUiSetting } from '@kbn/kibana-react-plugin/public';
 import { IsoWeekday, RuleSnoozeSchedule, ISO_WEEKDAYS } from '@kbn/alerting-plugin/common';
 import { useFindMaintenanceWindows } from '@kbn/alerting-plugin/public';
 import { euiThemeVars } from '@kbn/ui-theme';
+import { SnoozeSchedule } from '../../../../types';
 import {
   SNOOZE_SUCCESS_MESSAGE,
   UNSNOOZE_SUCCESS_MESSAGE,
@@ -82,7 +82,7 @@ const useDefaultTimzezone = () => {
 
 const CalendarRow = ({ days }: CalendarRowProps) => {
   const [openPopover, setOpenPopover] = useState<string | null>(null);
-  const popoverAnchors = useRef<Record<string, React.Ref<HTMLElement>>>({});
+  const popoverAnchors = useRef<Record<string, React.RefObject<HTMLElement>>>({});
 
   useLayoutEffect(() => {
     for (const { snoozes, maintenanceWindows, heading } of days) {
@@ -172,8 +172,10 @@ const CalendarRow = ({ days }: CalendarRowProps) => {
             <CalendarDay
               key={`calendar-day-${heading}`}
               id={`calendar-day-${heading}`}
-              onClick={(clickEvent: { target: { id?: string } }) => {
-                if (clickEvent.target.id === `calendar-day-${heading}`) {
+              onClick={(clickEvent) => {
+                if (
+                  (clickEvent.target as unknown as { id: string }).id === `calendar-day-${heading}`
+                ) {
                   setOpenPopover(`calendar-day-${heading}`);
                 }
               }}
@@ -298,7 +300,7 @@ function windowsToDisplayedOccurrences(
   const occurrences = schedule
     .map((event, i) => {
       const { rRule, duration, skipRecurrences, id } = event;
-      const recurrenceRule = new RRule({
+      const recurrenceRule: RRule = new RRule({
         ...rRule,
         dtstart: new Date(rRule.dtstart),
         until: rRule.until ? new Date(rRule.until) : null,
@@ -315,8 +317,8 @@ function windowsToDisplayedOccurrences(
           const start = moment(occurrence).toISOString();
           const end = moment(occurrence).add(duration, 'ms').toISOString();
           const title = event.title ?? 'Snooze';
-          const eventId = id ?? `relative-${i}`;
-          const recurrenceSummary = scheduleSummary({ ...event, id: eventId });
+          const eventId: string = id ?? `relative-${i}`;
+          const recurrenceSummary = scheduleSummary({ ...event, id: eventId } as SnoozeSchedule);
           return [
             ...result,
             {
@@ -336,41 +338,26 @@ function windowsToDisplayedOccurrences(
       );
     })
     .filter(Boolean)
-    .flat();
-  return occurrences.reduce(
-    (
-      result: Record<
-        number,
-        Array<{
-          start: string;
-          end: string;
-          id?: string;
-          isStart: boolean;
-          isEnd: boolean;
-        }>
-      >,
-      occurrence
-    ) => {
-      const startOfMonth = moment([year, month, 1]);
-      const startDayIndex = Math.round(
-        moment(occurrence.start).hour(0).diff(startOfMonth, 'days', true) + 1
-      );
-      const endDayIndex = Math.round(
-        moment(occurrence.end).hour(0).diff(startOfMonth, 'days', true) + 1
-      );
-      for (let i = startDayIndex; i <= endDayIndex; i++) {
-        if (!result[i]) result[i] = [];
-        result[i].push({ ...occurrence, isStart: i === startDayIndex, isEnd: i === endDayIndex });
-      }
-      return result;
-    },
-    {}
-  );
+    .flat() as DisplayedOccurrence[];
+  return occurrences.reduce((result: Record<number, DisplayedOccurrence[]>, occurrence) => {
+    const startOfMonth = moment([year, month, 1]);
+    const startDayIndex = Math.round(
+      moment(occurrence.start).hour(0).diff(startOfMonth, 'days', true) + 1
+    );
+    const endDayIndex = Math.round(
+      moment(occurrence.end).hour(0).diff(startOfMonth, 'days', true) + 1
+    );
+    for (let i = startDayIndex; i <= endDayIndex; i++) {
+      if (!result[i]) result[i] = [];
+      result[i].push({ ...occurrence, isStart: i === startDayIndex, isEnd: i === endDayIndex });
+    }
+    return result;
+  }, {});
 }
 
 export interface RuleScheduleCalendarProps {
   wkst?: IsoWeekday;
-  snoozeSchedule?: RuleSnoozeSchedule[];
+  snoozeSchedule?: SnoozeSchedule[];
   ruleId: string;
   requestRefresh: () => void;
 }
@@ -396,7 +383,7 @@ export const RuleScheduleCalendar: React.FC<RuleScheduleCalendarProps> = ({
     return [...ISO_WEEKDAYS.slice(wkstIndex), ...ISO_WEEKDAYS.slice(0, wkstIndex)];
   }, [wkst]);
 
-  const { maintenanceWindows, refetch } = useFindMaintenanceWindows({
+  const { maintenanceWindows } = useFindMaintenanceWindows({
     enabled: true,
   });
 
@@ -419,7 +406,8 @@ export const RuleScheduleCalendar: React.FC<RuleScheduleCalendarProps> = ({
   }, [weekdayOrder, displayedMonthYear]);
 
   const displayedSnoozeRecurrences = useMemo(
-    () => windowsToDisplayedOccurrences(snoozeSchedule, displayedMonthYear, weekRows),
+    () =>
+      windowsToDisplayedOccurrences(snoozeSchedule as EventWindow[], displayedMonthYear, weekRows),
     [snoozeSchedule, weekRows, displayedMonthYear]
   );
   const displayedMaintenanceRecurrences = useMemo(() => {
@@ -530,10 +518,10 @@ const CalendarGrid = styled.div`
 `;
 
 const AllDayEventBadge: React.FC<{
-  $isStart: boolean;
-  $isEnd: boolean;
-  color: string;
-  onClick: () => void;
+  $isStart?: boolean;
+  $isEnd?: boolean;
+  color?: string;
+  onClick?: React.MouseEventHandler<HTMLButtonElement>;
 }> = ({ $isStart, $isEnd, ...props }) => (
   <EuiBadge
     css={css`
@@ -558,7 +546,8 @@ z-index: 2;
     `}
     {...props}
     onClickAriaLabel="aaa"
-    iconOnClick={props.onClick}
+    onClick={props.onClick ?? (() => {})}
+    iconOnClick={props.onClick ?? (() => {})}
     iconOnClickAriaLabel="aaa"
   />
 );
@@ -656,7 +645,7 @@ const useSnoozeSchedulerApi = (onClose: () => void) => {
 
   const [isLoading, setIsLoading] = useState(false);
   const saveSnoozeSchedule = useCallback(
-    async (schedule: RuleSnoozeSchedule) => {
+    async (schedule: SnoozeSchedule) => {
       setIsLoading(true);
       try {
         await snoozeRule({ http, snoozeSchedule: schedule, id: ruleId });
@@ -706,7 +695,7 @@ const useSnoozeSchedulerApi = (onClose: () => void) => {
 };
 
 const AddSnoozePopover: React.FC<{
-  anchor: React.Ref<HTMLElement> | null;
+  anchor: React.RefObject<HTMLElement> | null;
   isOpen: boolean;
   onClose: () => void;
   initialStartDT: moment.Moment;
@@ -735,7 +724,7 @@ const AddSnoozePopover: React.FC<{
 
 const EventPopover: React.FC<{
   event: DisplayedOccurrence;
-  anchor: React.Ref<HTMLElement> | null;
+  anchor: React.RefObject<HTMLElement> | null;
   isOpen: boolean;
   onClose: () => void;
 }> = ({ event, anchor, isOpen, onClose }) => {
@@ -768,7 +757,7 @@ const EventPopover: React.FC<{
     event.type === 'scheduledSnooze' && isSchedulerOpen ? (
       <RuleSnoozeScheduler
         isLoading={isLoading}
-        initialSchedule={event?.eventObject}
+        initialSchedule={event?.eventObject as SnoozeSchedule}
         onClose={() => setIsSchedulerOpen(false)}
         onSaveSchedule={saveSnoozeSchedule}
         onCancelSchedules={cancelSnoozeSchedules}

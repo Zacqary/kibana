@@ -13,6 +13,7 @@ import type { ChartsPluginSetup } from '@kbn/charts-plugin/public';
 import type { DataPublicPluginStart } from '@kbn/data-plugin/public';
 import type { DataViewsPublicPluginStart } from '@kbn/data-views-plugin/public';
 import type { UnifiedSearchPublicPluginStart } from '@kbn/unified-search-plugin/public';
+import { Frequency } from '@kbn/rrule';
 import type {
   IconType,
   RecursivePartial,
@@ -741,12 +742,7 @@ export interface RowSelectionState {
 
 export type RuleStatus = 'enabled' | 'disabled' | 'snoozed';
 
-export enum RRuleFrequency {
-  YEARLY = 0,
-  MONTHLY = 1,
-  WEEKLY = 2,
-  DAILY = 3,
-}
+export type RRuleFrequency = Exclude<Frequency, Frequency.MINUTELY>;
 
 export interface RecurrenceSchedule {
   freq: RRuleFrequency;
