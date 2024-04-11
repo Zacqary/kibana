@@ -19,6 +19,7 @@ import { RuleDetails, RuleDefinition, SaveRuleButton } from '../features';
 import { RuleTypeParamsExpressionPlugins } from '../types';
 import { useValidation } from '../contexts';
 import { ValidationStatus } from '../common/constants';
+import { RuleActions } from '../features/rule_actions';
 
 export interface RuleFormPageProps {
   expressionPlugins: RuleTypeParamsExpressionPlugins;
@@ -89,13 +90,7 @@ export const RuleFormPage: React.FC<RuleFormPageProps> = ({
             },
             {
               title: 'Actions',
-              children: (
-                // TODO: Actions form will be implemented in a later PR
-                <div>
-                  Action form is WIP. You can only create a rule without actions in this version of
-                  the form.
-                </div>
-              ),
+              children: <RuleActions />,
             },
             {
               title: 'Rule details',

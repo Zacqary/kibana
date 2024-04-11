@@ -8,7 +8,7 @@
 import { HttpSetup } from '@kbn/core/public';
 import { AsApiContract, RewriteRequestCase } from '@kbn/actions-types';
 import { BASE_ACTION_API_PATH } from '../../common/constants';
-import type { ActionConnector, ActionConnectorProps } from '../../../types';
+import type { ActionConnector, ActionConnectorProps } from '../../types';
 
 const rewriteResponseRes = (
   results: Array<
@@ -40,7 +40,6 @@ const transformConnector: RewriteRequestCase<
 
 export async function loadConnectors({
   http,
-  includeSystemActions = false,
 }: {
   http: HttpSetup;
   includeSystemActions?: boolean;

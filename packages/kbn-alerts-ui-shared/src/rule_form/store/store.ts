@@ -11,6 +11,7 @@ import { combineReducers, configureStore, type Store } from '@reduxjs/toolkit';
 import { RuleCreationValidConsumer } from '@kbn/rule-data-utils';
 import { ruleDetailsSlice, ruleDefinitionSlice, initializeAndValidateConsumer } from '../features';
 import { metaSlice } from './meta_slice';
+import { ruleActionsSlice } from '../features/rule_actions';
 
 export type PreloadedState = { [K in keyof RuleFormRootState]?: Partial<RuleFormRootState[K]> };
 
@@ -22,6 +23,7 @@ export const initializeStore = (
   const rootReducer = combineReducers({
     ruleDefinition: ruleDefinitionSlice.reducer,
     ruleDetails: ruleDetailsSlice.reducer,
+    ruleActions: ruleActionsSlice.reducer,
     meta: metaSlice.reducer,
   });
   const preloadedState: RuleFormRootState = rootReducer(undefined, { type: 'INIT' });
@@ -35,6 +37,12 @@ export const initializeStore = (
     preloadedState.ruleDetails = {
       ...preloadedState.ruleDetails,
       ...partialInitialState.ruleDetails,
+    };
+  }
+  if (partialInitialState.ruleActions) {
+    preloadedState.ruleActions = {
+      ...preloadedState.ruleActions,
+      ...partialInitialState.ruleActions,
     };
   }
 
@@ -53,6 +61,7 @@ export const useInitializeStore = (...args: Parameters<typeof initializeStore>) 
 export interface RuleFormRootState {
   ruleDefinition: ReturnType<typeof ruleDefinitionSlice.reducer>;
   ruleDetails: ReturnType<typeof ruleDetailsSlice.reducer>;
+  ruleActions: ReturnType<typeof ruleActionsSlice.reducer>;
   meta: ReturnType<typeof metaSlice.reducer>;
 }
 export type RuleFormStore = Store;

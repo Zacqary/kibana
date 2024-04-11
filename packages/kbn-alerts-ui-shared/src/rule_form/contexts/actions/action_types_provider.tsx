@@ -11,7 +11,7 @@ import { useLoadActionTypesApi } from '../../apis';
 import type { ActionTypeModel } from '../../types';
 
 const ActionTypesContext = createContext<{
-  actionTypes: ActionTypeModel[];
+  actionTypes: Array<ActionTypeModel & { name: string }>;
   isLoading: boolean;
   isSuccess: boolean;
 }>({
@@ -28,19 +28,28 @@ export const ActionTypesProvider: React.FC<{ registeredActionTypes: ActionTypeMo
   const availableActionTypes = useMemo(() => {
     if (isLoading || !isSuccess || !loadedActionTypes) return [];
 
-    return registeredActionTypes.filter((registeredActionType) => {
-      if (registeredActionType.hideInUi) return false;
-      const matchingActionType = loadedActionTypes.find(
-        (loadedActionType) => loadedActionType.id === registeredActionType.id
-      );
-      if (!matchingActionType) return false;
-      return (
-        matchingActionType.enabled &&
-        matchingActionType.enabledInConfig &&
-        matchingActionType.enabledInLicense
-      );
-    });
+    const loadedActionTypesMap = new Map<string, ActionType>(
+      loadedActionTypes.map((actionType) => [actionType.id, actionType])
+    );
+
+    return registeredActionTypes
+      .filter((registeredActionType) => {
+        if (registeredActionType.hideInUi) return false;
+        const matchingActionType = loadedActionTypesMap.get(registeredActionType.id);
+        if (!matchingActionType) return false;
+        return (
+          matchingActionType.enabled &&
+          matchingActionType.enabledInConfig &&
+          matchingActionType.enabledInLicense
+        );
+      })
+      .map((actionType) => ({
+        ...actionType,
+        name: loadedActionTypesMap.get(actionType.id)!.name,
+      }));
   }, [registeredActionTypes, loadedActionTypes, isSuccess, isLoading]);
+
+  console.log('availableActionTypes:', availableActionTypes);
 
   return (
     <ActionTypesContext.Provider

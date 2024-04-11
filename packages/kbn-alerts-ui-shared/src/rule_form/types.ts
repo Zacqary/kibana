@@ -228,3 +228,15 @@ export interface ActionTypeModel<ActionConfig = any, ActionSecrets = any, Action
   modalWidth?: number;
   isSystemActionType?: boolean;
 }
+
+export interface ActionConnector {
+  actionTypeId: string;
+  id: string;
+  name: string;
+  isDeprecated: boolean;
+  isMissingSecrets: boolean;
+  isPreconfigured: boolean;
+  isSystemAction: boolean;
+  referencedByCount: number;
+  config: Record<string, unknown>;
+}

@@ -8,10 +8,10 @@
 
 import React, { createContext, useContext } from 'react';
 import { useLoadConnectorsApi } from '../../apis';
-import type { ActionTypeModel } from '../../types';
+import type { ActionConnector } from '../../types';
 
 const ConnectorsContext = createContext<{
-  connectors: ActionTypeModel[];
+  connectors: ActionConnector[];
   isLoading: boolean;
   isSuccess: boolean;
 }>({
@@ -26,7 +26,7 @@ export const ConnectorsProvider: React.FC<{}> = ({ children }) => {
   return (
     <ConnectorsContext.Provider
       value={{
-        connectors,
+        connectors: connectors ?? [],
         isSuccess,
         isLoading,
       }}
