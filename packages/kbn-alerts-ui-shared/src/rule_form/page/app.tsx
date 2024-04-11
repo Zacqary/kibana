@@ -15,6 +15,7 @@ import {
   RuleFormConfig,
   RuleFormKibanaServices,
   RuleTypeModelFromRegistry,
+  ActionTypeModel,
 } from '../types';
 
 interface EditRuleFormPageAppComponentProps {
@@ -39,6 +40,7 @@ interface RuleFormPageAppComponentProps extends RuleFormPageProps, RuleFormKiban
   config?: RuleFormConfig;
   appContext: RuleFormAppContext;
   registeredRuleTypeModel: RuleTypeModelFromRegistry | null;
+  registeredActionTypes: ActionTypeModel[];
 }
 
 export const RuleFormPageAppComponent: React.FC<
@@ -49,6 +51,7 @@ export const RuleFormPageAppComponent: React.FC<
   config,
   appContext: { consumer, validConsumers, canShowConsumerSelection },
   registeredRuleTypeModel,
+  registeredActionTypes,
   isRuleTypeModelPending = false,
   onLoadRuleSuccess = () => {}, // Not needed for Create, only for Edit
   isEdit,
@@ -59,6 +62,7 @@ export const RuleFormPageAppComponent: React.FC<
     <ContextsProvider
       onLoadRuleSuccess={onLoadRuleSuccess}
       registeredRuleTypeModel={registeredRuleTypeModel}
+      registeredActionTypes={registeredActionTypes}
       isRuleTypeModelPending={isRuleTypeModelPending}
       appContext={{ consumer, validConsumers }}
       http={http}

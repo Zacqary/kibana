@@ -202,3 +202,29 @@ export interface RuleLastRun {
     ignored?: number | null;
   };
 }
+
+export interface ActionTypeModel<ActionConfig = any, ActionSecrets = any, ActionParams = any> {
+  id: string;
+  iconClass: IconType;
+  selectMessage: string;
+  actionTypeTitle?: string;
+  validateParams: (
+    actionParams: ActionParams
+  ) => Promise<GenericValidationResult<Partial<ActionParams> | unknown>>;
+  actionConnectorFields: React.LazyExoticComponent<
+    ComponentType<ActionConnectorFieldsProps>
+  > | null;
+  actionParamsFields: React.LazyExoticComponent<ComponentType<ActionParamsProps<ActionParams>>>;
+  actionReadOnlyExtraComponent?: React.LazyExoticComponent<
+    ComponentType<ActionReadOnlyElementProps>
+  >;
+  defaultActionParams?: RecursivePartial<ActionParams>;
+  defaultRecoveredActionParams?: RecursivePartial<ActionParams>;
+  customConnectorSelectItem?: CustomConnectorSelectionItem;
+  isExperimental?: boolean;
+  subtype?: Array<{ id: string; name: string }>;
+  convertParamsBetweenGroups?: (params: ActionParams) => ActionParams | {};
+  hideInUi?: boolean;
+  modalWidth?: number;
+  isSystemActionType?: boolean;
+}

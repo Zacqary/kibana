@@ -37,6 +37,7 @@ export const CreateRulePage: React.FC<RouteComponentProps<MatchParams>> = ({
     notifications: { toasts },
     setBreadcrumbs,
     ruleTypeRegistry,
+    actionTypeRegistry,
     docLinks,
     charts,
     data,
@@ -48,6 +49,8 @@ export const CreateRulePage: React.FC<RouteComponentProps<MatchParams>> = ({
     () => ruleTypeRegistry.get(ruleTypeId),
     [ruleTypeId, ruleTypeRegistry]
   );
+
+  const registeredActionTypes = useMemo(() => actionTypeRegistry.list(), [actionTypeRegistry]);
 
   const onClickReturn = useCallback(() => {
     navigateToUrl(referrer);
@@ -81,6 +84,7 @@ export const CreateRulePage: React.FC<RouteComponentProps<MatchParams>> = ({
       http={http}
       toasts={toasts}
       registeredRuleTypeModel={registeredRuleType}
+      registeredActionTypes={registeredActionTypes}
       expressionPlugins={{
         charts,
         data,

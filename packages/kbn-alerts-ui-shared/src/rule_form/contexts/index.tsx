@@ -16,18 +16,22 @@ import {
   RuleFormConfig,
   RuleTypeModelFromRegistry,
   RuleFormKibanaServices,
+  ActionTypeModel,
 } from '../types';
 import { InitialRuleProvider, type OnLoadRuleSuccess } from './initial_rule_context';
+import { ActionContextsProvider } from './actions';
 
 export { useRuleType } from './rule_type_context';
 export { useConfig } from './config_context';
 export { useValidation } from './validation_context';
 export { useKibanaServices } from './kibana_services_context';
+export { useActionTypes, useConnectors } from './actions';
 
 interface ContextsProviderProps extends RuleFormKibanaServices {
   config?: RuleFormConfig;
   appContext: RuleFormAppContext;
   registeredRuleTypeModel: RuleTypeModelFromRegistry | null;
+  registeredActionTypes: ActionTypeModel[];
   onLoadRuleSuccess: OnLoadRuleSuccess;
   isRuleTypeModelPending: boolean;
   isEdit?: boolean;
@@ -40,6 +44,7 @@ export const ContextsProvider: React.FC<ContextsProviderProps> = ({
   http,
   toasts,
   registeredRuleTypeModel,
+  registeredActionTypes,
   isRuleTypeModelPending,
   appContext,
   isEdit,
@@ -54,14 +59,16 @@ export const ContextsProvider: React.FC<ContextsProviderProps> = ({
           isRuleTypeModelPending={isRuleTypeModelPending}
         >
           <ConfigProvider value={config}>
-            {/**  ReduxStoreProvider requires the rule type and initial rule to initialize
-             * RuleTypeProvider does not render children if it fails to load the rule type,
-             * or if it fails to load the initial rule in Edit mode, so the Redux store MUST
-             * be a child of the RuleTypeProvider and InitialRuleProvider
-             */}
-            <ReduxStoreProvider appContext={appContext}>
-              <ValidationProvider>{children}</ValidationProvider>
-            </ReduxStoreProvider>
+            <ActionContextsProvider registeredActionTypes={registeredActionTypes}>
+              {/**  ReduxStoreProvider requires the rule type and initial rule to initialize
+               * RuleTypeProvider does not render children if it fails to load the rule type,
+               * or if it fails to load the initial rule in Edit mode, so the Redux store MUST
+               * be a child of the RuleTypeProvider and InitialRuleProvider
+               */}
+              <ReduxStoreProvider appContext={appContext}>
+                <ValidationProvider>{children}</ValidationProvider>
+              </ReduxStoreProvider>
+            </ActionContextsProvider>
           </ConfigProvider>
         </RuleTypeProvider>
       </InitialRuleProvider>

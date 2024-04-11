@@ -33,5 +33,6 @@ export enum ValidationStatus {
 
 export const BASE_ALERTING_API_PATH = '/api/alerting';
 export const INTERNAL_BASE_ALERTING_API_PATH = '/internal/alerting' as const;
+export const BASE_ACTION_API_PATH = '/api/actions';
 
 export const hydrateState = createAction<RuleFormRule>('hydrateState');
