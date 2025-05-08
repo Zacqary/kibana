@@ -38,7 +38,7 @@ import {
 } from '../helper';
 import { prepareInlineEditPanel } from '../inline_editing/setup_inline_editing';
 import { setupPanelManagement } from '../inline_editing/panel_management';
-import { mountInlineEditPanel } from '../inline_editing/mount';
+import { mountInlinePanel } from '../inline_editing/mount';
 import { StateManagementConfig } from './initialize_state_management';
 import { apiPublishesInlineEditingCapabilities } from '../type_guards';
 import { SearchContextConfig } from './initialize_search_context';
@@ -255,7 +255,7 @@ export function initializeEditApi(
             updateState({ ...getState(), attributes }),
     });
     if (ConfigPanel) {
-      mountInlineEditPanel(ConfigPanel, startDependencies.coreStart, overlayTracker, uuid);
+      mountInlinePanel(ConfigPanel, startDependencies.coreStart, overlayTracker, { uuid });
     }
   };
 
