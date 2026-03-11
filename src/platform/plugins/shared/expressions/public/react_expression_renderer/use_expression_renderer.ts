@@ -143,6 +143,8 @@ export function useExpressionRenderer(
         ...(!isExpressionValueError(result) ? { error: null } : {}),
       });
 
+      console.log('DATA RESULT', result);
+
       onData$?.(result, expressionLoaderRef.current?.inspect(), partial);
     });
 

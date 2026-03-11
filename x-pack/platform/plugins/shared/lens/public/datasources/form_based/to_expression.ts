@@ -486,6 +486,10 @@ function getExpressionForLayer(
       )
       .filter((field): field is string => Boolean(field));
 
+    // If searchSessionId is undefined, derive sampler seed from the absolute timerange. This
+    // prevents a new samplerSeed from being generated every time if searchSessionId is not in use
+    const samplerSeed = seedrandom(searchSessionId ?? JSON.stringify(absDateRange)).int32();
+
     const dataAST = isFormBasedEsqlMode
       ? buildExpressionFunction('esql', {
           query: esqlLayer.esql,
@@ -504,7 +508,7 @@ function getExpressionForLayer(
           partialRows: false,
           timeFields: allDateHistogramFields,
           probability: getSamplingValue(layer),
-          samplerSeed: seedrandom(searchSessionId).int32(),
+          samplerSeed,
           ignoreGlobalFilters: Boolean(layer.ignoreGlobalFilters),
         }).toAst();
 

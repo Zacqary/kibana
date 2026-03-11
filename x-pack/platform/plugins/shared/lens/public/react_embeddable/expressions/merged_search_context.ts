@@ -20,7 +20,7 @@ import type { LensRuntimeState } from '@kbn/lens-common';
 import { nonNullable } from '../../utils';
 
 export interface MergedSearchContext {
-  now: number;
+  now: number | undefined;
   timeRange: TimeRange | undefined;
   query: Array<Query | AggregateQuery>;
   filters: Filter[];
@@ -66,10 +66,13 @@ export function getMergedSearchContext(
   const customTimeRange = customTimeRange$.getValue();
 
   const timeRangeToRender = customTimeRange ?? timesliceTimeRange ?? timeRange;
+  const isRelativeTimeRange = timeRangeToRender
+    ? timeRangeToRender.to.includes('now') || timeRangeToRender.from.includes('now')
+    : false;
 
   const context = {
     esqlVariables,
-    now: data.nowProvider.get().getTime(),
+    now: isRelativeTimeRange ? data.nowProvider.get().getTime() : undefined,
     timeRange: timeRangeToRender,
     query: [attributes.state.query].filter(nonNullable),
     filters: injectFilterReferences(attributes.state.filters || [], attributes.references),

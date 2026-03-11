@@ -11,7 +11,7 @@ import { i18n } from '@kbn/i18n';
 import type { Logger } from '@kbn/logging';
 import { isPromise } from '@kbn/std';
 import type { ObservableLike, UnwrapObservable } from '@kbn/utility-types';
-import { keys, last as lastOf, mapValues, reduce, zipObject } from 'lodash';
+import { keys, last as lastOf, mapValues, omit, reduce, zipObject } from 'lodash';
 import type { Subscription } from 'rxjs';
 import {
   catchError,
@@ -743,9 +743,21 @@ export class Execution<
     if (!fn.allowCache || !this.context.allowCache) {
       return { hash: undefined, value: undefined, valid: false };
     }
-    const hash = calculateObjectHash([fn.name, input, args, this.context.getSearchContext()]);
+    const hash = calculateObjectHash([
+      fn.name,
+      omit(input, 'now'),
+      args,
+      this.context.getSearchContext(),
+    ]);
 
     const cached = this.functionCache.get(hash);
+
+    console.log('CAN USE CACHED RESULT', hash, cached, [
+      fn.name,
+      omit(input, 'now'),
+      args,
+      this.context.getSearchContext(),
+    ]);
     if (hash && cached) {
       return {
         hash,

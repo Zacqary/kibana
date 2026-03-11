@@ -141,6 +141,7 @@ export class ExpressionLoader {
       this.execution.cancel(AbortReason.REPLACED);
     }
     this.setParams(params);
+    console.log('ALLOW CACHE', params.allowCache, params.searchContext, params.executionContext);
     this.execution = getExpressionsService().execute(expression, params.context, {
       searchContext: params.searchContext,
       variables: params.variables || {},
